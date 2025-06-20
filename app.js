@@ -53,8 +53,33 @@ const swimBtn = document.getElementById('swim-btn');
 const swimCanvas = document.getElementById('swim-canvas');
 const swimCtx = swimCanvas.getContext('2d');
 
-// Store all fish objects
+// Store all fish objects (add artist, createdAt, docId)
 const fishes = [];
+
+// Modal helpers
+function showModal(html, onClose) {
+    let modal = document.createElement('div');
+    modal.style.position = 'fixed';
+    modal.style.left = '0';
+    modal.style.top = '0';
+    modal.style.width = '100vw';
+    modal.style.height = '100vh';
+    modal.style.background = 'rgba(0,0,0,0.35)';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
+    modal.style.zIndex = '9999';
+    modal.innerHTML = `<div style="background:#fff;padding:28px 24px 18px 24px;border-radius:12px;box-shadow:0 4px 32px #0002;min-width:260px;max-width:90vw;max-height:90vh;overflow:auto;">${html}</div>`;
+    function close() {
+        document.body.removeChild(modal);
+        if (onClose) onClose();
+    }
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) close();
+    });
+    document.body.appendChild(modal);
+    return { close, modal };
+}
 
 // Helper to fetch all fishes from Firestore with pagination using document ID
 async function getAllFishes() {
@@ -88,8 +113,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     const allFishDocs = await getAllFishes();
     allFishDocs.forEach(doc => {
         const data = doc.data();
-        // Log all fish data for debugging
-        console.log('Fish doc:', doc.id, data);
         // Skip if image is missing or invalid
         if (!data.image || typeof data.image !== 'string' || !data.image.startsWith('data:image')) {
             console.warn('Skipping fish with invalid image:', doc.id, data);
@@ -119,7 +142,10 @@ window.addEventListener('DOMContentLoaded', async () => {
                 vx: 0,
                 vy: 0,
                 width: 80,
-                height: 48
+                height: 48,
+                artist: data.artist || 'Anonymous',
+                createdAt: data.createdAt || null,
+                docId: doc.id
             });
         };
         img.src = data.image;
@@ -136,7 +162,6 @@ swimBtn.addEventListener('click', async () => {
     const fishCtx = fishCanvas.getContext('2d');
     fishCtx.imageSmoothingEnabled = true;
     fishCtx.imageSmoothingQuality = 'high';
-    // Scale the drawing canvas into the fixed-size fish image
     fishCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, SAVE_W, SAVE_H);
     // Randomize initial position and direction
     const direction = Math.random() > 0.5 ? 1 : -1;
@@ -155,45 +180,109 @@ swimBtn.addEventListener('click', async () => {
         width: 80,
         height: 48
     };
-    fishes.push(fishObj);
-    // Save fish to Firestore at fixed resolution
-    const fishImgData = fishCanvas.toDataURL();
-    await window.db.collection('fishes').add({
-        image: fishImgData,
-        x: fishObj.x,
-        y: fishObj.y,
-        direction: fishObj.direction,
-        phase: fishObj.phase,
-        amplitude: fishObj.amplitude,
-        speed: fishObj.speed,
-        vx: 0,
-        vy: 0
-    });
-    // Also display the fish immediately in the tank (crop and scale to 80x48)
-    const img = new window.Image();
-    img.onload = function() {
-        const displayCanvas = makeDisplayFishCanvas(img, 80, 48);
-        fishes.push({
-            fishCanvas: displayCanvas,
-            x,
-            y,
-            direction,
+    // Modal: Would you like to sign the art?
+    showModal(`<div style='text-align:center;'>Would you like to sign the art?<br><br>
+        <button id='sign-yes' style='margin:0 12px 0 0;padding:6px 18px;'>Yes</button>
+        <button id='sign-no' style='padding:6px 18px;'>No</button></div>`, () => {});
+    document.getElementById('sign-yes').onclick = () => {
+        document.querySelector('div[style*="z-index: 9999"]').remove();
+        showModal(`<div style='text-align:center;'>Enter your name:<br><input id='artist-name' style='margin:10px 0 16px 0;padding:6px;width:80%;max-width:180px;'><br>
+            <button id='submit-fish' style='padding:6px 18px;'>Submit</button></div>`, () => {});
+        document.getElementById('submit-fish').onclick = async () => {
+            const artist = document.getElementById('artist-name').value.trim() || 'Anonymous';
+            const createdAt = new Date().toISOString();
+            const fishImgData = fishCanvas.toDataURL();
+            const docRef = await window.db.collection('fishes').add({
+                image: fishImgData,
+                x: fishObj.x,
+                y: fishObj.y,
+                direction: fishObj.direction,
+                phase: fishObj.phase,
+                amplitude: fishObj.amplitude,
+                speed: fishObj.speed,
+                vx: 0,
+                vy: 0,
+                artist,
+                createdAt
+            });
+            // Also display the fish immediately in the tank (crop and scale to 80x48)
+            const img = new window.Image();
+            img.onload = function() {
+                const displayCanvas = makeDisplayFishCanvas(img, 80, 48);
+                fishes.push({
+                    fishCanvas: displayCanvas,
+                    x,
+                    y,
+                    direction,
+                    phase: fishObj.phase,
+                    amplitude: fishObj.amplitude,
+                    speed: fishObj.speed,
+                    vx: 0,
+                    vy: 0,
+                    width: 80,
+                    height: 48,
+                    artist,
+                    createdAt,
+                    docId: docRef.id
+                });
+            };
+            img.src = fishImgData;
+            localStorage.setItem('fishSubmitted', 'true');
+            localStorage.setItem('fishDocId', docRef.id); // Save the Firestore doc ID
+            const drawUI = document.getElementById('draw-ui');
+            if (drawUI) drawUI.style.display = 'none';
+            if (swimCanvas) swimCanvas.style.display = '';
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            document.querySelector('div[style*="z-index: 9999"]').remove();
+        };
+    };
+    document.getElementById('sign-no').onclick = async () => {
+        document.querySelector('div[style*="z-index: 9999"]').remove();
+        const artist = 'Anonymous';
+        const createdAt = new Date().toISOString();
+        const fishImgData = fishCanvas.toDataURL();
+        const docRef = await window.db.collection('fishes').add({
+            image: fishImgData,
+            x: fishObj.x,
+            y: fishObj.y,
+            direction: fishObj.direction,
             phase: fishObj.phase,
             amplitude: fishObj.amplitude,
             speed: fishObj.speed,
             vx: 0,
             vy: 0,
-            width: 80,
-            height: 48
+            artist,
+            createdAt
         });
+        // Also display the fish immediately in the tank (crop and scale to 80x48)
+        const img = new window.Image();
+        img.onload = function() {
+            const displayCanvas = makeDisplayFishCanvas(img, 80, 48);
+            fishes.push({
+                fishCanvas: displayCanvas,
+                x,
+                y,
+                direction,
+                phase: fishObj.phase,
+                amplitude: fishObj.amplitude,
+                speed: fishObj.speed,
+                vx: 0,
+                vy: 0,
+                width: 80,
+                height: 48,
+                artist,
+                createdAt,
+                docId: docRef.id
+            });
+        };
+        img.src = fishImgData;
+        localStorage.setItem('fishSubmitted', 'true');
+        localStorage.setItem('fishDocId', docRef.id); // Save the Firestore doc ID
+        const drawUI = document.getElementById('draw-ui');
+        if (drawUI) drawUI.style.display = 'none';
+        if (swimCanvas) swimCanvas.style.display = '';
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
     };
-    img.src = fishImgData;
-    // Mark as submitted and switch UI
-    localStorage.setItem('fishSubmitted', 'true');
-    const drawUI = document.getElementById('draw-ui');
-    if (drawUI) drawUI.style.display = 'none';
-    if (swimCanvas) swimCanvas.style.display = '';
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
 });
 
 // Paint options UI
@@ -306,7 +395,7 @@ canvas.addEventListener('touchstart', () => {
     ctx.lineWidth = currentLineWidth;
 });
 
-// Add flying-away behavior on tap/click in the tank
+// Make sure handleTankTap is defined before event listeners
 function handleTankTap(e) {
     let rect = swimCanvas.getBoundingClientRect();
     let tapX, tapY;
@@ -336,8 +425,68 @@ function handleTankTap(e) {
         }
     });
 }
-swimCanvas.addEventListener('touchstart', handleTankTap);
-swimCanvas.addEventListener('mousedown', handleTankTap);
+
+// Remove any previous handlers to avoid duplicates/conflicts
+swimCanvas.removeEventListener('mousedown', window._swimFishMousedownHandler || (()=>{}));
+swimCanvas.removeEventListener('touchstart', window._swimFishTouchstartHandler || (()=>{}));
+
+// --- Unified handler for both mouse and touch, with fish image in modal ---
+function showFishInfoModal(fish) {
+    // Create a canvas snapshot of the fish
+    const fishImgCanvas = document.createElement('canvas');
+    fishImgCanvas.width = fish.width;
+    fishImgCanvas.height = fish.height;
+    fishImgCanvas.getContext('2d').drawImage(fish.fishCanvas, 0, 0);
+    const imgDataUrl = fishImgCanvas.toDataURL();
+    let info = `<div style='text-align:center;'>`;
+    info += `<img src='${imgDataUrl}' width='80' height='48' style='display:block;margin:0 auto 10px auto;border-radius:8px;border:1px solid #ccc;background:#f8f8f8;' alt='Fish'><br>`;
+    info += `<b>Artist:</b> ${fish.artist || 'Anonymous'}<br>`;
+    info += `<b>Created:</b> ${new Date(fish.createdAt).toLocaleString()}<br>`;
+    info += `</div>`;
+    showModal(info, () => {});
+}
+
+// --- Unified handler for both mouse and touch ---
+function handleFishTap(e) {
+    let rect = swimCanvas.getBoundingClientRect();
+    let tapX, tapY;
+    if (e.touches && e.touches.length > 0) {
+        tapX = e.touches[0].clientX - rect.left;
+        tapY = e.touches[0].clientY - rect.top;
+    } else {
+        tapX = e.clientX - rect.left;
+        tapY = e.clientY - rect.top;
+    }
+    // Use bounding box hit detection, topmost fish first
+    for (let i = fishes.length - 1; i >= 0; i--) {
+        const fish = fishes[i];
+        if (
+            tapX >= fish.x && tapX <= fish.x + fish.width &&
+            tapY >= fish.y && tapY <= fish.y + fish.height
+        ) {
+            showFishInfoModal(fish);
+            return;
+        }
+    }
+    // If no fish was hit, trigger flying-away effect
+    handleTankTap(e);
+}
+
+// Add event listeners for fish tapping
+swimCanvas.addEventListener('mousedown', handleFishTap);
+swimCanvas.addEventListener('touchstart', handleFishTap);
+
+// Responsive canvas and UI for mobile
+function resizeForMobile() {
+    swimCanvas.width = window.innerWidth;
+    swimCanvas.height = window.innerHeight;
+    swimCanvas.style.width = '100vw';
+    swimCanvas.style.height = '100vh';
+    swimCanvas.style.maxWidth = '100vw';
+    swimCanvas.style.maxHeight = '100vh';
+}
+window.addEventListener('resize', resizeForMobile);
+resizeForMobile();
 
 // Animate all fish with sine wave swimming and tail wiggle
 function animateFishes() {
@@ -368,7 +517,6 @@ function animateFishes() {
     }
     requestAnimationFrame(animateFishes);
 }
-
 // Draw a fish with a tail wiggle effect
 function drawWigglingFish(fish, x, y, direction, time, phase) {
     const src = fish.fishCanvas;
@@ -398,41 +546,7 @@ function drawWigglingFish(fish, x, y, direction, time, phase) {
         swimCtx.restore();
     }
 }
-animateFishes();
-
-// Responsive canvas and UI for mobile
-function resizeForMobile() {
-    // Make the swimCanvas fill the whole viewport
-    swimCanvas.width = window.innerWidth;
-    swimCanvas.height = window.innerHeight;
-    swimCanvas.style.width = '100vw';
-    swimCanvas.style.height = '100vh';
-    swimCanvas.style.maxWidth = '100vw';
-    swimCanvas.style.maxHeight = '100vh';
-}
-
-window.addEventListener('resize', resizeForMobile);
-resizeForMobile();
-
-// Make paint bar and buttons touch friendly
-function enhancePaintBarTouch() {
-    const paintBar = document.getElementById('paint-bar');
-    if (paintBar) {
-        paintBar.style.touchAction = 'manipulation';
-        paintBar.style.fontSize = '1.1em';
-        Array.from(paintBar.querySelectorAll('button')).forEach(btn => {
-            btn.style.minWidth = '36px';
-            btn.style.minHeight = '36px';
-            btn.style.fontSize = '1em';
-        });
-    }
-}
-window.addEventListener('DOMContentLoaded', enhancePaintBarTouch);
-
-// Prevent scrolling when drawing on mobile
-canvas.addEventListener('touchmove', (e) => {
-    if (drawing) e.preventDefault();
-}, { passive: false });
+requestAnimationFrame(animateFishes);
 
 // Helper to crop whitespace (transparent or white) from a canvas
 function cropCanvasToContent(srcCanvas) {
