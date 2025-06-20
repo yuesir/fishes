@@ -7,14 +7,15 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1>Draw a Fish !</h1>
-    <canvas id="draw-canvas" width="500" height="300"></canvas>
-    <br>
-    <button id="swim-btn">Make it Swim!</button>
-    <canvas id="swim-canvas" width="500" height="300"></canvas>
-    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
-    <script src="firebase-init.js"></script>
-    <script src="app.js"></script>
+  <div id="draw-ui" style="max-width: 420px; margin: 0 auto; text-align: center;">
+    <!-- The paint bar will be injected here by JS -->
+    <canvas id="draw-canvas" width="400" height="240" style="border:1px solid #888; background:#fff; display:block; margin:0 auto 12px auto;"></canvas>
+    <button id="swim-btn" style="margin-bottom: 8px;">Make it Swim</button>
+  </div>
+  <canvas id="swim-canvas" width="800" height="400" style="border:1px solid #888; background:#e0f7fa; display:block; margin: 24px auto 0 auto;"></canvas>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+  <script src="firebase-init.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

@@ -148,6 +148,116 @@ swimBtn.addEventListener('click', async () => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 });
 
+// Paint options UI
+const colors = ['#000000', '#ff0000', '#00cc00', '#0000ff', '#ffff00', '#ff8800', '#ffffff'];
+let currentColor = colors[0];
+let currentLineWidth = 6;
+let undoStack = [];
+
+function createPaintOptions() {
+    let paintBar = document.getElementById('paint-bar');
+    if (!paintBar) {
+        paintBar = document.createElement('div');
+        paintBar.id = 'paint-bar';
+        paintBar.style.display = 'flex';
+        paintBar.style.gap = '8px';
+        paintBar.style.margin = '8px 0';
+        paintBar.style.alignItems = 'center';
+        paintBar.style.background = '#f8f8f8';
+        paintBar.style.border = '1px solid #ccc';
+        paintBar.style.padding = '6px 10px';
+        paintBar.style.borderRadius = '8px';
+        paintBar.style.boxShadow = '0 2px 6px rgba(0,0,0,0.04)';
+        // Insert at the top of draw-ui
+        const drawUI = document.getElementById('draw-ui');
+        if (drawUI) drawUI.insertBefore(paintBar, drawUI.firstChild);
+    } else {
+        paintBar.innerHTML = '';
+    }
+    // Color buttons
+    colors.forEach(color => {
+        const btn = document.createElement('button');
+        btn.style.background = color;
+        btn.style.width = '28px';
+        btn.style.height = '28px';
+        btn.style.border = color === '#ffffff' ? '1px solid #888' : 'none';
+        btn.style.borderRadius = '50%';
+        btn.style.cursor = 'pointer';
+        btn.title = color;
+        btn.onclick = () => {
+            currentColor = color;
+        };
+        paintBar.appendChild(btn);
+    });
+    // Line width
+    const widthLabel = document.createElement('span');
+    widthLabel.textContent = 'Line:';
+    widthLabel.style.marginLeft = '12px';
+    paintBar.appendChild(widthLabel);
+    [4, 6, 10, 16].forEach(w => {
+        const btn = document.createElement('button');
+        btn.textContent = w;
+        btn.style.width = '28px';
+        btn.style.height = '28px';
+        btn.style.borderRadius = '50%';
+        btn.style.marginLeft = '2px';
+        btn.style.cursor = 'pointer';
+        btn.onclick = () => {
+            currentLineWidth = w;
+        };
+        paintBar.appendChild(btn);
+    });
+}
+createPaintOptions();
+
+function pushUndo() {
+    // Save current canvas state as image data
+    undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+    // Limit stack size
+    if (undoStack.length > 30) undoStack.shift();
+}
+
+function undo() {
+    if (undoStack.length > 0) {
+        const imgData = undoStack.pop();
+        ctx.putImageData(imgData, 0, 0);
+    } else {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+}
+
+function createUndoButton() {
+    let paintBar = document.getElementById('paint-bar');
+    if (paintBar) {
+        const undoBtn = document.createElement('button');
+        undoBtn.textContent = 'Undo';
+        undoBtn.style.marginLeft = '16px';
+        undoBtn.style.padding = '0 12px';
+        undoBtn.style.height = '28px';
+        undoBtn.style.borderRadius = '6px';
+        undoBtn.style.cursor = 'pointer';
+        undoBtn.onclick = undo;
+        paintBar.appendChild(undoBtn);
+    }
+}
+
+// Push to undo stack before every new stroke
+canvas.addEventListener('mousedown', pushUndo);
+canvas.addEventListener('touchstart', pushUndo);
+
+// Add undo button to paint bar
+createUndoButton();
+
+// Update drawing color and line width
+canvas.addEventListener('mousedown', () => {
+    ctx.strokeStyle = currentColor;
+    ctx.lineWidth = currentLineWidth;
+});
+canvas.addEventListener('touchstart', () => {
+    ctx.strokeStyle = currentColor;
+    ctx.lineWidth = currentLineWidth;
+});
+
 // Animate all fish with sine wave swimming and tail wiggle
 function animateFishes() {
     swimCtx.clearRect(0, 0, swimCanvas.width, swimCanvas.height);
