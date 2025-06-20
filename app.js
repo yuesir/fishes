@@ -305,3 +305,52 @@ function drawWigglingFish(fish, x, y, direction, time, phase) {
     }
 }
 animateFishes();
+
+// Responsive canvas and UI for mobile
+function resizeForMobile() {
+    const isMobile = window.innerWidth < 600;
+    // Drawing canvas
+    if (isMobile) {
+        canvas.width = Math.min(window.innerWidth * 0.95, 340);
+        canvas.height = Math.round(canvas.width * 0.56); // 16:9 ratio
+        swimCanvas.width = Math.min(window.innerWidth * 0.98, 360);
+        swimCanvas.height = Math.round(swimCanvas.width * 0.5); // 2:1 ratio
+        canvas.style.width = '95vw';
+        canvas.style.maxWidth = '340px';
+        swimCanvas.style.width = '98vw';
+        swimCanvas.style.maxWidth = '360px';
+    } else {
+        // For desktop, aquarium fills most of the width but is capped
+        const tankMax = Math.min(window.innerWidth * 0.9, 900);
+        swimCanvas.width = tankMax;
+        swimCanvas.height = Math.round(tankMax * 0.5); // 2:1 ratio
+        swimCanvas.style.width = tankMax + 'px';
+        swimCanvas.style.maxWidth = '900px';
+        canvas.width = 400;
+        canvas.height = 240;
+        canvas.style.width = '';
+        canvas.style.maxWidth = '';
+    }
+}
+window.addEventListener('resize', resizeForMobile);
+resizeForMobile();
+
+// Make paint bar and buttons touch friendly
+function enhancePaintBarTouch() {
+    const paintBar = document.getElementById('paint-bar');
+    if (paintBar) {
+        paintBar.style.touchAction = 'manipulation';
+        paintBar.style.fontSize = '1.1em';
+        Array.from(paintBar.querySelectorAll('button')).forEach(btn => {
+            btn.style.minWidth = '36px';
+            btn.style.minHeight = '36px';
+            btn.style.fontSize = '1em';
+        });
+    }
+}
+window.addEventListener('DOMContentLoaded', enhancePaintBarTouch);
+
+// Prevent scrolling when drawing on mobile
+canvas.addEventListener('touchmove', (e) => {
+    if (drawing) e.preventDefault();
+}, { passive: false });
