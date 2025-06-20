@@ -171,31 +171,27 @@ function drawWigglingFish(fish, x, y, direction, time, phase) {
     const w = fish.width;
     const h = fish.height;
     const tailEnd = Math.floor(w * 0.4); // 40% is tail, 60% is head/body
-    if (direction === 1) {
-        // Right-facing: tail is left, head is right
-        for (let i = 0; i < w; i++) {
-            let isTail = i < tailEnd;
-            let t = isTail ? (tailEnd - i - 1) / (tailEnd - 1) : 0;
-            let wiggle = isTail ? Math.sin(time * 3 + phase + t * 2) * t * 12 : 0;
-            let drawX = x + i + wiggle;
-            swimCtx.save();
-            swimCtx.translate(drawX, y);
-            swimCtx.drawImage(src, i, 0, 1, h, 0, 0, 1, h);
-            swimCtx.restore();
+    for (let i = 0; i < w; i++) {
+        let isTail, t, wiggle, drawCol, drawX;
+        if (direction === 1) {
+            // Right-facing: tail is left, head is right
+            isTail = i < tailEnd;
+            t = isTail ? (tailEnd - i - 1) / (tailEnd - 1) : 0;
+            wiggle = isTail ? Math.sin(time * 3 + phase + t * 2) * t * 12 : 0;
+            drawCol = i;
+            drawX = x + i + wiggle;
+        } else {
+            // Left-facing: tail is rightmost 40%, head is left
+            isTail = i >= w - tailEnd;
+            t = isTail ? (i - (w - tailEnd)) / (tailEnd - 1) : 0;
+            wiggle = isTail ? Math.sin(time * 3 + phase + t * 2) * t * 12 : 0;
+            drawCol = w - i - 1;
+            drawX = x + i - wiggle;
         }
-    } else {
-        // Left-facing: tail is rightmost 40%, head is left
-        for (let i = 0; i < w; i++) {
-            let isTail = i >= w - tailEnd;
-            let t = isTail ? (i - (w - tailEnd)) / (tailEnd - 1) : 0;
-            let wiggle = isTail ? Math.sin(time * 3 + phase + t * 2) * t * 12 : 0;
-            let drawCol = w - i - 1;
-            let drawX = x + i - wiggle;
-            swimCtx.save();
-            swimCtx.translate(drawX, y);
-            swimCtx.drawImage(src, drawCol, 0, 1, h, 0, 0, 1, h);
-            swimCtx.restore();
-        }
+        swimCtx.save();
+        swimCtx.translate(drawX, y);
+        swimCtx.drawImage(src, drawCol, 0, 1, h, 0, 0, 1, h);
+        swimCtx.restore();
     }
 }
 animateFishes();
