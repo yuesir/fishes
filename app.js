@@ -78,17 +78,20 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
         // Create an offscreen canvas for the fish
         const fishCanvas = document.createElement('canvas');
-        fishCanvas.width = 80;
-        fishCanvas.height = 48;
+        fishCanvas.width = window.innerWidth;
+        fishCanvas.height = window.innerHeight;
         const fishCtx = fishCanvas.getContext('2d');
         // Draw the base64 image onto the canvas
         const img = new window.Image();
         img.onload = function() {
             fishCtx.drawImage(img, 0, 0, 80, 48);
+            // Always randomize x and y for every fish on load
+            const x = Math.floor(Math.random() * (swimCanvas.width - 80));
+            const y = Math.floor(Math.random() * (swimCanvas.height - 48));
             fishes.push({
                 fishCanvas,
-                x: data.x,
-                y: data.y,
+                x,
+                y,
                 direction: data.direction,
                 phase: data.phase,
                 amplitude: data.amplitude,
@@ -104,8 +107,8 @@ window.addEventListener('DOMContentLoaded', async () => {
 swimBtn.addEventListener('click', async () => {
     // Create an offscreen canvas for the fish
     const fishCanvas = document.createElement('canvas');
-    fishCanvas.width = 80;
-    fishCanvas.height = 48;
+    fishCanvas.width = window.innerWidth;
+    fishCanvas.height = window.innerHeight;
     const fishCtx = fishCanvas.getContext('2d');
     // Enable high-quality image smoothing
     fishCtx.imageSmoothingEnabled = true;
@@ -113,11 +116,12 @@ swimBtn.addEventListener('click', async () => {
     // Scale the drawing canvas into the fish image
     fishCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, 80, 48);
     // Randomize initial position and direction
-    const y = Math.floor(Math.random() * (swimCanvas.height - 48));
     const direction = Math.random() > 0.5 ? 1 : -1;
+    const x = Math.floor(Math.random() * (swimCanvas.width - 80));
+    const y = Math.floor(Math.random() * (swimCanvas.height - 48));
     const fishObj = {
         fishCanvas,
-        x: direction === 1 ? 0 : swimCanvas.width - 80,
+        x,
         y,
         direction,
         phase: Math.random() * Math.PI * 2,
@@ -308,30 +312,15 @@ animateFishes();
 
 // Responsive canvas and UI for mobile
 function resizeForMobile() {
-    const isMobile = window.innerWidth < 600;
-    // Drawing canvas
-    if (isMobile) {
-        canvas.width = Math.min(window.innerWidth * 0.95, 340);
-        canvas.height = Math.round(canvas.width * 0.56); // 16:9 ratio
-        swimCanvas.width = Math.min(window.innerWidth * 0.98, 360);
-        swimCanvas.height = Math.round(swimCanvas.width * 0.5); // 2:1 ratio
-        canvas.style.width = '95vw';
-        canvas.style.maxWidth = '340px';
-        swimCanvas.style.width = '98vw';
-        swimCanvas.style.maxWidth = '360px';
-    } else {
-        // For desktop, aquarium fills most of the width but is capped
-        const tankMax = Math.min(window.innerWidth * 0.9, 900);
-        swimCanvas.width = tankMax;
-        swimCanvas.height = Math.round(tankMax * 0.5); // 2:1 ratio
-        swimCanvas.style.width = tankMax + 'px';
-        swimCanvas.style.maxWidth = '900px';
-        canvas.width = 400;
-        canvas.height = 240;
-        canvas.style.width = '';
-        canvas.style.maxWidth = '';
-    }
+    // Make the swimCanvas fill the whole viewport
+    swimCanvas.width = window.innerWidth;
+    swimCanvas.height = window.innerHeight;
+    swimCanvas.style.width = '100vw';
+    swimCanvas.style.height = '100vh';
+    swimCanvas.style.maxWidth = '100vw';
+    swimCanvas.style.maxHeight = '100vh';
 }
+
 window.addEventListener('resize', resizeForMobile);
 resizeForMobile();
 
