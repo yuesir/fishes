@@ -56,6 +56,22 @@ const swimCtx = swimCanvas.getContext('2d');
 // Store all fish objects
 const fishes = [];
 
+// Helper to fetch all fishes from Firestore with pagination using document ID
+async function getAllFishes() {
+    const allDocs = [];
+    let lastDoc = null;
+    const pageSize = 100;
+    while (true) {
+        let query = window.db.collection('fishes').limit(pageSize);
+        if (lastDoc) query = query.startAfter(lastDoc.id);
+        const snapshot = await query.get();
+        snapshot.forEach(doc => allDocs.push(doc));
+        if (snapshot.size < pageSize) break;
+        lastDoc = snapshot.docs[snapshot.docs.length - 1];
+    }
+    return allDocs;
+}
+
 // On page load, show drawing UI only if user hasn't submitted a fish
 window.addEventListener('DOMContentLoaded', async () => {
     const hasSubmitted = localStorage.getItem('fishSubmitted');
@@ -68,26 +84,44 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (drawUI) drawUI.style.display = '';
         if (swimCanvas) swimCanvas.style.display = 'none';
     }
-    // Load all fish from Firestore on page load
-    const snapshot = await window.db.collection('fishes').get();
-    snapshot.forEach(doc => {
+    // Load all fish from Firestore on page load (fetch all pages)
+    const allFishDocs = await getAllFishes();
+    allFishDocs.forEach(doc => {
         const data = doc.data();
+        // Log all fish data for debugging
+        console.log('Fish doc:', doc.id, data);
         // Skip if image is missing or invalid
         if (!data.image || typeof data.image !== 'string' || !data.image.startsWith('data:image')) {
+            console.warn('Skipping fish with invalid image:', doc.id, data);
             return;
         }
-        // Create an offscreen canvas for the fish
+        // Create an offscreen canvas for the fish (always 80x48 for display)
         const fishCanvas = document.createElement('canvas');
-        fishCanvas.width = window.innerWidth;
-        fishCanvas.height = window.innerHeight;
+        fishCanvas.width = 80;
+        fishCanvas.height = 48;
         const fishCtx = fishCanvas.getContext('2d');
-        // Draw the base64 image onto the canvas
+        // Draw the base64 image onto a temp canvas at its natural size
         const img = new window.Image();
         img.onload = function() {
-            fishCtx.drawImage(img, 0, 0, 80, 48);
-            // Always randomize x and y for every fish on load
-            const x = Math.floor(Math.random() * (swimCanvas.width - 80));
-            const y = Math.floor(Math.random() * (swimCanvas.height - 48));
+            // Draw image to temp canvas at its natural size
+            const temp = document.createElement('canvas');
+            temp.width = img.width;
+            temp.height = img.height;
+            temp.getContext('2d').drawImage(img, 0, 0);
+            const cropped = cropCanvasToContent(temp);
+            // Draw cropped fish centered in 80x48, always scale up or down to fit
+            fishCtx.clearRect(0, 0, 80, 48);
+            const scale = Math.min(80 / cropped.width, 48 / cropped.height);
+            const drawW = cropped.width * scale;
+            const drawH = cropped.height * scale;
+            const dx = (80 - drawW) / 2;
+            const dy = (48 - drawH) / 2;
+            fishCtx.drawImage(cropped, 0, 0, cropped.width, cropped.height, dx, dy, drawW, drawH);
+            // Clamp x and y to ensure fish are always visible
+            const maxX = Math.max(0, swimCanvas.width - 80);
+            const maxY = Math.max(0, swimCanvas.height - 48);
+            const x = Math.floor(Math.random() * maxX);
+            const y = Math.floor(Math.random() * maxY);
             fishes.push({
                 fishCanvas,
                 x,
@@ -109,14 +143,14 @@ window.addEventListener('DOMContentLoaded', async () => {
 swimBtn.addEventListener('click', async () => {
     // Create an offscreen canvas for the fish
     const fishCanvas = document.createElement('canvas');
-    fishCanvas.width = window.innerWidth;
-    fishCanvas.height = window.innerHeight;
+    fishCanvas.width = canvas.width; // Save at full drawing resolution
+    fishCanvas.height = canvas.height;
     const fishCtx = fishCanvas.getContext('2d');
     // Enable high-quality image smoothing
     fishCtx.imageSmoothingEnabled = true;
     fishCtx.imageSmoothingQuality = 'high';
-    // Scale the drawing canvas into the fish image
-    fishCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, 80, 48);
+    // Copy the drawing canvas into the fish image at full resolution
+    fishCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
     // Randomize initial position and direction
     const direction = Math.random() > 0.5 ? 1 : -1;
     const x = Math.floor(Math.random() * (swimCanvas.width - 80));
@@ -135,7 +169,7 @@ swimBtn.addEventListener('click', async () => {
         height: 48
     };
     fishes.push(fishObj);
-    // Save fish to Firestore
+    // Save fish to Firestore at full resolution
     const fishImgData = fishCanvas.toDataURL();
     await window.db.collection('fishes').add({
         image: fishImgData,
@@ -395,3 +429,38 @@ window.addEventListener('DOMContentLoaded', enhancePaintBarTouch);
 canvas.addEventListener('touchmove', (e) => {
     if (drawing) e.preventDefault();
 }, { passive: false });
+
+// Helper to crop whitespace (transparent or white) from a canvas
+function cropCanvasToContent(srcCanvas) {
+    const ctx = srcCanvas.getContext('2d');
+    const w = srcCanvas.width;
+    const h = srcCanvas.height;
+    const imgData = ctx.getImageData(0, 0, w, h);
+    let minX = w, minY = h, maxX = 0, maxY = 0;
+    let found = false;
+    for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+            const i = (y * w + x) * 4;
+            const r = imgData.data[i];
+            const g = imgData.data[i+1];
+            const b = imgData.data[i+2];
+            const a = imgData.data[i+3];
+            // Consider non-transparent and not white as content
+            if (a > 16 && !(r > 240 && g > 240 && b > 240)) {
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+                found = true;
+            }
+        }
+    }
+    if (!found) return srcCanvas; // No content found
+    const cropW = maxX - minX + 1;
+    const cropH = maxY - minY + 1;
+    const cropped = document.createElement('canvas');
+    cropped.width = cropW;
+    cropped.height = cropH;
+    cropped.getContext('2d').drawImage(srcCanvas, minX, minY, cropW, cropH, 0, 0, cropW, cropH);
+    return cropped;
+}
