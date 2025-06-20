@@ -100,30 +100,16 @@ window.addEventListener('DOMContentLoaded', async () => {
         fishCanvas.width = 80;
         fishCanvas.height = 48;
         const fishCtx = fishCanvas.getContext('2d');
-        // Draw the base64 image onto a temp canvas at its natural size
         const img = new window.Image();
         img.onload = function() {
-            // Draw image to temp canvas at its natural size
-            const temp = document.createElement('canvas');
-            temp.width = img.width;
-            temp.height = img.height;
-            temp.getContext('2d').drawImage(img, 0, 0);
-            const cropped = cropCanvasToContent(temp);
-            // Draw cropped fish centered in 80x48, always scale up or down to fit
-            fishCtx.clearRect(0, 0, 80, 48);
-            const scale = Math.min(80 / cropped.width, 48 / cropped.height);
-            const drawW = cropped.width * scale;
-            const drawH = cropped.height * scale;
-            const dx = (80 - drawW) / 2;
-            const dy = (48 - drawH) / 2;
-            fishCtx.drawImage(cropped, 0, 0, cropped.width, cropped.height, dx, dy, drawW, drawH);
+            const displayCanvas = makeDisplayFishCanvas(img, 80, 48);
             // Clamp x and y to ensure fish are always visible
             const maxX = Math.max(0, swimCanvas.width - 80);
             const maxY = Math.max(0, swimCanvas.height - 48);
             const x = Math.floor(Math.random() * maxX);
             const y = Math.floor(Math.random() * maxY);
             fishes.push({
-                fishCanvas,
+                fishCanvas: displayCanvas,
                 x,
                 y,
                 direction: data.direction,
@@ -141,16 +127,17 @@ window.addEventListener('DOMContentLoaded', async () => {
 });
 
 swimBtn.addEventListener('click', async () => {
-    // Create an offscreen canvas for the fish
+    // Save fish at a fixed resolution (e.g., 320x192)
+    const SAVE_W = 320;
+    const SAVE_H = 192;
     const fishCanvas = document.createElement('canvas');
-    fishCanvas.width = canvas.width; // Save at full drawing resolution
-    fishCanvas.height = canvas.height;
+    fishCanvas.width = SAVE_W;
+    fishCanvas.height = SAVE_H;
     const fishCtx = fishCanvas.getContext('2d');
-    // Enable high-quality image smoothing
     fishCtx.imageSmoothingEnabled = true;
     fishCtx.imageSmoothingQuality = 'high';
-    // Copy the drawing canvas into the fish image at full resolution
-    fishCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
+    // Scale the drawing canvas into the fixed-size fish image
+    fishCtx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, SAVE_W, SAVE_H);
     // Randomize initial position and direction
     const direction = Math.random() > 0.5 ? 1 : -1;
     const x = Math.floor(Math.random() * (swimCanvas.width - 80));
@@ -169,7 +156,7 @@ swimBtn.addEventListener('click', async () => {
         height: 48
     };
     fishes.push(fishObj);
-    // Save fish to Firestore at full resolution
+    // Save fish to Firestore at fixed resolution
     const fishImgData = fishCanvas.toDataURL();
     await window.db.collection('fishes').add({
         image: fishImgData,
@@ -182,13 +169,30 @@ swimBtn.addEventListener('click', async () => {
         vx: 0,
         vy: 0
     });
+    // Also display the fish immediately in the tank (crop and scale to 80x48)
+    const img = new window.Image();
+    img.onload = function() {
+        const displayCanvas = makeDisplayFishCanvas(img, 80, 48);
+        fishes.push({
+            fishCanvas: displayCanvas,
+            x,
+            y,
+            direction,
+            phase: fishObj.phase,
+            amplitude: fishObj.amplitude,
+            speed: fishObj.speed,
+            vx: 0,
+            vy: 0,
+            width: 80,
+            height: 48
+        });
+    };
+    img.src = fishImgData;
     // Mark as submitted and switch UI
     localStorage.setItem('fishSubmitted', 'true');
     const drawUI = document.getElementById('draw-ui');
-    // Use the already-declared swimCanvas variable
     if (drawUI) drawUI.style.display = 'none';
     if (swimCanvas) swimCanvas.style.display = '';
-    // Clear the drawing canvas after adding the fish
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 });
 
@@ -463,4 +467,26 @@ function cropCanvasToContent(srcCanvas) {
     cropped.height = cropH;
     cropped.getContext('2d').drawImage(srcCanvas, minX, minY, cropW, cropH, 0, 0, cropW, cropH);
     return cropped;
+}
+
+// Helper to crop, scale, and center a fish image into a display canvas
+function makeDisplayFishCanvas(img, width = 80, height = 48) {
+    const displayCanvas = document.createElement('canvas');
+    displayCanvas.width = width;
+    displayCanvas.height = height;
+    const displayCtx = displayCanvas.getContext('2d');
+    // Draw image to temp canvas at its natural size
+    const temp = document.createElement('canvas');
+    temp.width = img.width;
+    temp.height = img.height;
+    temp.getContext('2d').drawImage(img, 0, 0);
+    const cropped = cropCanvasToContent(temp);
+    displayCtx.clearRect(0, 0, width, height);
+    const scale = Math.min(width / cropped.width, height / cropped.height);
+    const drawW = cropped.width * scale;
+    const drawH = cropped.height * scale;
+    const dx = (width - drawW) / 2;
+    const dy = (height - drawH) / 2;
+    displayCtx.drawImage(cropped, 0, 0, cropped.width, cropped.height, dx, dy, drawW, drawH);
+    return displayCanvas;
 }
