@@ -96,6 +96,8 @@ window.addEventListener('DOMContentLoaded', async () => {
                 phase: data.phase,
                 amplitude: data.amplitude,
                 speed: data.speed,
+                vx: 0,
+                vy: 0,
                 width: 80,
                 height: 48
             });
@@ -127,6 +129,8 @@ swimBtn.addEventListener('click', async () => {
         phase: Math.random() * Math.PI * 2,
         amplitude: 20 + Math.random() * 10,
         speed: 1.5 + Math.random(),
+        vx: 0,
+        vy: 0,
         width: 80,
         height: 48
     };
@@ -140,7 +144,9 @@ swimBtn.addEventListener('click', async () => {
         direction: fishObj.direction,
         phase: fishObj.phase,
         amplitude: fishObj.amplitude,
-        speed: fishObj.speed
+        speed: fishObj.speed,
+        vx: 0,
+        vy: 0
     });
     // Mark as submitted and switch UI
     localStorage.setItem('fishSubmitted', 'true');
@@ -262,12 +268,55 @@ canvas.addEventListener('touchstart', () => {
     ctx.lineWidth = currentLineWidth;
 });
 
+// Add flying-away behavior on tap/click in the tank
+function handleTankTap(e) {
+    let rect = swimCanvas.getBoundingClientRect();
+    let tapX, tapY;
+    if (e.touches && e.touches.length > 0) {
+        tapX = e.touches[0].clientX - rect.left;
+        tapY = e.touches[0].clientY - rect.top;
+    } else {
+        tapX = e.clientX - rect.left;
+        tapY = e.clientY - rect.top;
+    }
+    const radius = 120; // Distance for effect
+    fishes.forEach(fish => {
+        // Center of fish
+        const fx = fish.x + fish.width / 2;
+        const fy = fish.y + fish.height / 2;
+        const dx = fx - tapX;
+        const dy = fy - tapY;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < radius) {
+            // Add velocity away from tap
+            const force = 16 * (1 - dist / radius); // Stronger if closer
+            const norm = Math.sqrt(dx*dx + dy*dy) || 1;
+            fish.vx = (dx / norm) * force;
+            fish.vy = (dy / norm) * force;
+            // Optionally, make fish face away
+            fish.direction = dx > 0 ? 1 : -1;
+        }
+    });
+}
+swimCanvas.addEventListener('touchstart', handleTankTap);
+swimCanvas.addEventListener('mousedown', handleTankTap);
+
 // Animate all fish with sine wave swimming and tail wiggle
 function animateFishes() {
     swimCtx.clearRect(0, 0, swimCanvas.width, swimCanvas.height);
     const time = Date.now() / 500;
     for (const fish of fishes) {
-        fish.x += fish.speed * fish.direction;
+        // If fish has velocity from a tap, move it and apply friction
+        if (fish.vx || fish.vy) {
+            fish.x += fish.vx;
+            fish.y += fish.vy;
+            fish.vx *= 0.92; // Friction
+            fish.vy *= 0.92;
+            if (Math.abs(fish.vx) < 0.5) fish.vx = 0;
+            if (Math.abs(fish.vy) < 0.5) fish.vy = 0;
+        } else {
+            fish.x += fish.speed * fish.direction;
+        }
         // Sine wave for y position
         const swimY = fish.y + Math.sin(time + fish.phase) * fish.amplitude;
         // Tail wiggle: warp the image horizontally
@@ -275,6 +324,9 @@ function animateFishes() {
         if (fish.x > swimCanvas.width - fish.width || fish.x < 0) {
             fish.direction *= -1;
         }
+        // Clamp fish inside the tank
+        fish.x = Math.max(0, Math.min(swimCanvas.width - fish.width, fish.x));
+        fish.y = Math.max(0, Math.min(swimCanvas.height - fish.height, fish.y));
     }
     requestAnimationFrame(animateFishes);
 }
