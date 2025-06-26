@@ -114,7 +114,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     allFishDocs.forEach(doc => {
         const data = doc.data();
         // Skip if image is missing or invalid
-        if (!data.image || typeof data.image !== 'string' || !data.image.startsWith('data:image')) {
+        // Accept both 'image' and 'Image' keys for compatibility
+        const imageUrl = data.image || data.Image;
+        if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.startsWith('http')) {
             console.warn('Skipping fish with invalid image:', doc.id, data);
             return;
         }
@@ -124,31 +126,39 @@ window.addEventListener('DOMContentLoaded', async () => {
         fishCanvas.height = 48;
         const fishCtx = fishCanvas.getContext('2d');
         const img = new window.Image();
+        // Set crossOrigin for remote images
+        img.crossOrigin = "anonymous";
         img.onload = function() {
-            const displayCanvas = makeDisplayFishCanvas(img, 80, 48);
-            // Clamp x and y to ensure fish are always visible
-            const maxX = Math.max(0, swimCanvas.width - 80);
-            const maxY = Math.max(0, swimCanvas.height - 48);
-            const x = Math.floor(Math.random() * maxX);
-            const y = Math.floor(Math.random() * maxY);
-            fishes.push({
-                fishCanvas: displayCanvas,
-                x,
-                y,
-                direction: data.direction,
-                phase: data.phase,
-                amplitude: data.amplitude,
-                speed: data.speed,
-                vx: 0,
-                vy: 0,
-                width: 80,
-                height: 48,
-                artist: data.artist || 'Anonymous',
-                createdAt: data.createdAt || null,
-                docId: doc.id
-            });
+            let displayCanvas = makeDisplayFishCanvas(img, 80, 48);
+            if (displayCanvas && displayCanvas.width && displayCanvas.height) {
+                // Clamp x and y to ensure fish are always visible and not negative
+                const maxX = Math.max(0, swimCanvas.width - 80);
+                const maxY = Math.max(0, swimCanvas.height - 48);
+                const x = Math.floor(Math.random() * maxX);
+                const y = Math.floor(Math.random() * maxY);
+                fishes.push({
+                    fishCanvas: displayCanvas,
+                    x,
+                    y,
+                    direction: data.direction || data.Direction || 1,
+                    phase: data.phase || 0,
+                    amplitude: data.amplitude || 24,
+                    speed: data.speed || 2,
+                    vx: 0,
+                    vy: 0,
+                    width: 80,
+                    height: 48,
+                    artist: data.artist || data.Artist || 'Anonymous',
+                    createdAt: data.createdAt || data.CreatedAt || null,
+                    peduncle: data.peduncle || { x: 0.4 },
+                });
+            } else {
+                console.warn('Fish image did not load or is blank:', imageUrl);
+            }
+            console.log('Loaded fish:', data);
         };
-        img.src = data.image;
+        // Fix: Only set src after onload and crossOrigin are set
+        img.src = imageUrl;
     });
 });
 
@@ -184,75 +194,24 @@ swimBtn.addEventListener('click', async () => {
     showModal(`<div style='text-align:center;'>Would you like to sign the art?<br><br>
         <button id='sign-yes' style='margin:0 12px 0 0;padding:6px 18px;'>Yes</button>
         <button id='sign-no' style='padding:6px 18px;'>No</button></div>`, () => {});
-    document.getElementById('sign-yes').onclick = () => {
-        document.querySelector('div[style*="z-index: 9999"]').remove();
-        showModal(`<div style='text-align:center;'>Enter your name:<br><input id='artist-name' style='margin:10px 0 16px 0;padding:6px;width:80%;max-width:180px;'><br>
-            <button id='submit-fish' style='padding:6px 18px;'>Submit</button></div>`, () => {});
-        document.getElementById('submit-fish').onclick = async () => {
-            const artist = document.getElementById('artist-name').value.trim() || 'Anonymous';
-            const createdAt = new Date().toISOString();
-            const fishImgData = fishCanvas.toDataURL();
-            const docRef = await window.db.collection('fishes').add({
-                image: fishImgData,
-                x: fishObj.x,
-                y: fishObj.y,
-                direction: fishObj.direction,
-                phase: fishObj.phase,
-                amplitude: fishObj.amplitude,
-                speed: fishObj.speed,
-                vx: 0,
-                vy: 0,
-                artist,
-                createdAt
-            });
-            // Also display the fish immediately in the tank (crop and scale to 80x48)
-            const img = new window.Image();
-            img.onload = function() {
-                const displayCanvas = makeDisplayFishCanvas(img, 80, 48);
-                fishes.push({
-                    fishCanvas: displayCanvas,
-                    x,
-                    y,
-                    direction,
-                    phase: fishObj.phase,
-                    amplitude: fishObj.amplitude,
-                    speed: fishObj.speed,
-                    vx: 0,
-                    vy: 0,
-                    width: 80,
-                    height: 48,
-                    artist,
-                    createdAt,
-                    docId: docRef.id
-                });
-            };
-            img.src = fishImgData;
-            localStorage.setItem('fishSubmitted', 'true');
-            localStorage.setItem('fishDocId', docRef.id); // Save the Firestore doc ID
-            const drawUI = document.getElementById('draw-ui');
-            if (drawUI) drawUI.style.display = 'none';
-            if (swimCanvas) swimCanvas.style.display = '';
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            document.querySelector('div[style*="z-index: 9999"]').remove();
-        };
-    };
-    document.getElementById('sign-no').onclick = async () => {
-        document.querySelector('div[style*="z-index: 9999"]').remove();
-        const artist = 'Anonymous';
+    // Helper to handle fish submission (shared by sign-yes and sign-no)
+    async function submitFish(artist) {
         const createdAt = new Date().toISOString();
-        const fishImgData = fishCanvas.toDataURL();
-        const docRef = await window.db.collection('fishes').add({
-            image: fishImgData,
-            x: fishObj.x,
-            y: fishObj.y,
-            direction: fishObj.direction,
-            phase: fishObj.phase,
-            amplitude: fishObj.amplitude,
-            speed: fishObj.speed,
-            vx: 0,
-            vy: 0,
-            artist,
-            createdAt
+        const fishImgData = fishCanvas.toDataURL('image/png');
+        // Convert dataURL to Blob
+        function dataURLtoBlob(dataurl) {
+            const arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)[1],
+                bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+            for (let i = 0; i < n; i++) u8arr[i] = bstr.charCodeAt(i);
+            return new Blob([u8arr], { type: mime });
+        }
+        const imageBlob = dataURLtoBlob(fishImgData);
+        const formData = new FormData();
+        formData.append('image', imageBlob, 'fish.png');
+        formData.append('artist', artist);
+        await fetch('http://localhost:8080/uploadfish', {
+            method: 'POST',
+            body: formData
         });
         // Also display the fish immediately in the tank (crop and scale to 80x48)
         const img = new window.Image();
@@ -260,8 +219,8 @@ swimBtn.addEventListener('click', async () => {
             const displayCanvas = makeDisplayFishCanvas(img, 80, 48);
             fishes.push({
                 fishCanvas: displayCanvas,
-                x,
-                y,
+                x: Math.random() * maxX,
+                y: Math.random() * maxY,
                 direction,
                 phase: fishObj.phase,
                 amplitude: fishObj.amplitude,
@@ -272,16 +231,30 @@ swimBtn.addEventListener('click', async () => {
                 height: 48,
                 artist,
                 createdAt,
-                docId: docRef.id
+                docId: null // No Firestore docId
             });
         };
         img.src = fishImgData;
         localStorage.setItem('fishSubmitted', 'true');
-        localStorage.setItem('fishDocId', docRef.id); // Save the Firestore doc ID
         const drawUI = document.getElementById('draw-ui');
         if (drawUI) drawUI.style.display = 'none';
         if (swimCanvas) swimCanvas.style.display = '';
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        document.querySelector('div[style*="z-index: 9999"]')?.remove();
+    }
+
+    document.getElementById('sign-yes').onclick = async () => {
+        document.querySelector('div[style*="z-index: 9999"]')?.remove();
+        showModal(`<div style='text-align:center;'>Enter your name:<br><input id='artist-name' style='margin:10px 0 16px 0;padding:6px;width:80%;max-width:180px;'><br>
+            <button id='submit-fish' style='padding:6px 18px;'>Submit</button></div>`, () => {});
+        document.getElementById('submit-fish').onclick = async () => {
+            const artist = document.getElementById('artist-name').value.trim() || 'Anonymous';
+            await submitFish(artist);
+        };
+    };
+    document.getElementById('sign-no').onclick = async () => {
+        document.querySelector('div[style*="z-index: 9999"]')?.remove();
+        await submitFish('Anonymous');
     };
 });
 
@@ -522,7 +495,7 @@ function drawWigglingFish(fish, x, y, direction, time, phase) {
     const src = fish.fishCanvas;
     const w = fish.width;
     const h = fish.height;
-    const tailEnd = Math.floor(w * 0.4); // 40% is tail, 60% is head/body
+    const tailEnd = Math.floor(w * fish.peduncle.x); // peduncle% is tail.
     for (let i = 0; i < w; i++) {
         let isTail, t, wiggle, drawCol, drawX;
         if (direction === 1) {
