@@ -97,6 +97,110 @@ async function getAllFishes() {
     return allDocs;
 }
 
+// --- Fish object creation helper ---
+function createFishObject({
+    fishCanvas,
+    x,
+    y,
+    direction = 1,
+    phase = 0,
+    amplitude = 24,
+    speed = 2,
+    vx = 0,
+    vy = 0,
+    width = 80,
+    height = 48,
+    artist = 'Anonymous',
+    createdAt = null,
+    docId = null,
+    peduncle = { x: 0.4 }
+}) {
+    return {
+        fishCanvas,
+        x,
+        y,
+        direction,
+        phase,
+        amplitude,
+        speed,
+        vx,
+        vy,
+        width,
+        height,
+        artist,
+        createdAt,
+        docId,
+        peduncle
+    };
+}
+
+// --- Fish image loading helper ---
+function loadFishImageToTank(imgUrl, fishData, onDone) {
+    const img = new window.Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = function() {
+        const displayCanvas = makeDisplayFishCanvas(img, 80, 48);
+        if (displayCanvas && displayCanvas.width && displayCanvas.height) {
+            // Clamp x and y to ensure fish are always visible and not negative
+            const maxX = Math.max(0, swimCanvas.width - 80);
+            const maxY = Math.max(0, swimCanvas.height - 48);
+            const x = Math.floor(Math.random() * maxX);
+            const y = Math.floor(Math.random() * maxY);
+            const fishObj = createFishObject({
+                fishCanvas: displayCanvas,
+                x,
+                y,
+                direction: fishData.direction || fishData.Direction || 1,
+                phase: fishData.phase || 0,
+                amplitude: fishData.amplitude || 24,
+                speed: fishData.speed || 2,
+                artist: fishData.artist || fishData.Artist || 'Anonymous',
+                createdAt: fishData.createdAt || fishData.CreatedAt || null,
+                docId: fishData.docId || null,
+                peduncle: fishData.peduncle || { x: 0.4 }
+            });
+            fishes.push(fishObj);
+            if (onDone) onDone(fishObj);
+        } else {
+            console.warn('Fish image did not load or is blank:', imgUrl);
+        }
+    };
+    img.src = imgUrl;
+}
+
+// --- Fish submission helper ---
+async function submitFishToTank({
+    fishCanvas,
+    x,
+    y,
+    direction,
+    phase,
+    amplitude,
+    speed,
+    artist,
+    createdAt,
+    docId = null
+}) {
+    const fishImgData = fishCanvas.toDataURL('image/png');
+    const img = new window.Image();
+    img.onload = function() {
+        const displayCanvas = makeDisplayFishCanvas(img, 80, 48);
+        fishes.push(createFishObject({
+            fishCanvas: displayCanvas,
+            x,
+            y,
+            direction,
+            phase,
+            amplitude,
+            speed,
+            artist,
+            createdAt,
+            docId
+        }));
+    };
+    img.src = fishImgData;
+}
+
 // On page load, show drawing UI only if user hasn't submitted a fish
 window.addEventListener('DOMContentLoaded', async () => {
     const hasSubmitted = localStorage.getItem('fishSubmitted');
@@ -113,52 +217,16 @@ window.addEventListener('DOMContentLoaded', async () => {
     const allFishDocs = await getAllFishes();
     allFishDocs.forEach(doc => {
         const data = doc.data();
-        // Skip if image is missing or invalid
         // Accept both 'image' and 'Image' keys for compatibility
         const imageUrl = data.image || data.Image;
         if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.startsWith('http')) {
             console.warn('Skipping fish with invalid image:', doc.id, data);
             return;
         }
-        // Create an offscreen canvas for the fish (always 80x48 for display)
-        const fishCanvas = document.createElement('canvas');
-        fishCanvas.width = 80;
-        fishCanvas.height = 48;
-        const fishCtx = fishCanvas.getContext('2d');
-        const img = new window.Image();
-        // Set crossOrigin for remote images
-        img.crossOrigin = "anonymous";
-        img.onload = function() {
-            let displayCanvas = makeDisplayFishCanvas(img, 80, 48);
-            if (displayCanvas && displayCanvas.width && displayCanvas.height) {
-                // Clamp x and y to ensure fish are always visible and not negative
-                const maxX = Math.max(0, swimCanvas.width - 80);
-                const maxY = Math.max(0, swimCanvas.height - 48);
-                const x = Math.floor(Math.random() * maxX);
-                const y = Math.floor(Math.random() * maxY);
-                fishes.push({
-                    fishCanvas: displayCanvas,
-                    x,
-                    y,
-                    direction: data.direction || data.Direction || 1,
-                    phase: data.phase || 0,
-                    amplitude: data.amplitude || 24,
-                    speed: data.speed || 2,
-                    vx: 0,
-                    vy: 0,
-                    width: 80,
-                    height: 48,
-                    artist: data.artist || data.Artist || 'Anonymous',
-                    createdAt: data.createdAt || data.CreatedAt || null,
-                    peduncle: data.peduncle || { x: 0.4 },
-                });
-            } else {
-                console.warn('Fish image did not load or is blank:', imageUrl);
-            }
-            console.log('Loaded fish:', data);
-        };
-        // Fix: Only set src after onload and crossOrigin are set
-        img.src = imageUrl;
+        loadFishImageToTank(imageUrl, {
+            ...data,
+            docId: doc.id
+        });
     });
 });
 
@@ -209,32 +277,22 @@ swimBtn.addEventListener('click', async () => {
         const formData = new FormData();
         formData.append('image', imageBlob, 'fish.png');
         formData.append('artist', artist);
-        await fetch('http://localhost:8080/uploadfish', {
+        await fetch('https://fishes-be-571679687712.northamerica-northeast1.run.app/uploadfish', {
             method: 'POST',
             body: formData
         });
-        // Also display the fish immediately in the tank (crop and scale to 80x48)
-        const img = new window.Image();
-        img.onload = function() {
-            const displayCanvas = makeDisplayFishCanvas(img, 80, 48);
-            fishes.push({
-                fishCanvas: displayCanvas,
-                x: Math.random() * maxX,
-                y: Math.random() * maxY,
-                direction,
-                phase: fishObj.phase,
-                amplitude: fishObj.amplitude,
-                speed: fishObj.speed,
-                vx: 0,
-                vy: 0,
-                width: 80,
-                height: 48,
-                artist,
-                createdAt,
-                docId: null // No Firestore docId
-            });
-        };
-        img.src = fishImgData;
+        // Add to tank immediately
+        await submitFishToTank({
+            fishCanvas,
+            x: Math.random() * (swimCanvas.width - 80),
+            y: Math.random() * (swimCanvas.height - 48),
+            direction,
+            phase: fishObj.phase,
+            amplitude: fishObj.amplitude,
+            speed: fishObj.speed,
+            artist,
+            createdAt
+        });
         localStorage.setItem('fishSubmitted', 'true');
         const drawUI = document.getElementById('draw-ui');
         if (drawUI) drawUI.style.display = 'none';
