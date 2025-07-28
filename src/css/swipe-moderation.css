@@ -768,3 +768,31 @@
     0% { transform: scaleX(1); }
     100% { transform: scaleX(-1); }
 }
+
+.undo-container {
+    display: flex;
+    justify-content: center;
+    margin-top: 15px;
+}
+
+.undo-btn {
+    background: #607d8b;
+    color: white;
+    min-width: 120px;
+}
+
+.undo-btn:hover:not(:disabled) {
+    background: #546e7a;
+    transform: scale(1.05);
+}
+
+.undo-btn:disabled {
+    background: #bbb;
+    color: #888;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.undo-btn:disabled::before {
+    display: none;
+}

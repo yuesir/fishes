@@ -98,6 +98,12 @@
                     ✅ Approve
                 </button>
             </div>
+            
+            <div class="undo-container">
+                <button id="undoBtn" class="action-btn undo-btn" onclick="undoLastAction()" title="Undo Last Action" disabled>
+                    ↶ Undo
+                </button>
+            </div>
         </div>
 
         <div id="loading" class="loading" style="display: none;">
@@ -121,6 +127,7 @@
             <span>R = Rotate</span>
             <span>V = Mark Valid</span>
             <span>I = Mark Invalid</span>
+            <span>U = Undo</span>
             <span>Space = Skip</span>
         </div>
 
@@ -193,6 +200,7 @@
                             <span><kbd>R</kbd> = Rotate</span>
                             <span><kbd>V</kbd> = Valid Fish</span>
                             <span><kbd>I</kbd> = Invalid Fish</span>
+                            <span><kbd>U</kbd> = Undo</span>
                         </div>
                     </div>
                     

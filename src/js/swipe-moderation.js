@@ -11,6 +11,10 @@ let isLoadingMore = false;
 let lastDoc = null;
 let hasMoreFish = true;
 
+// Undo functionality
+let undoHistory = [];
+const MAX_UNDO_HISTORY = 10;
+
 // Use the same backend URL from fish-utils.js
 const API_BASE_URL = `${BACKEND_URL}/api`;
 
@@ -38,6 +42,7 @@ window.onload = async function () {
     await loadFlaggedFish();
     setupEventListeners();
     showCurrentFish();
+    updateUndoButton(); // Initialize undo button state
 };
 
 // Load flagged fish from backend
@@ -558,6 +563,14 @@ async function performSwipeAction(action, card) {
     
     // Update stats immediately for responsiveness (only for actions that remove the card)
     if (['approve', 'approve-only', 'reject', 'reject-only', 'skip', 'mark-valid', 'mark-invalid'].includes(action)) {
+        // Save to undo history before making changes (only for actions that remove cards)
+        const fishData = flaggedFish[currentIndex];
+        const previousStats = { ...stats };
+        const previousIndex = currentIndex;
+        
+        // Add to undo history
+        addToUndoHistory(fishData, action, previousStats, previousIndex);
+        
         stats.remaining--;
         if (action === 'approve' || action === 'approve-only') stats.approved++;
         else if (action === 'reject' || action === 'reject-only') stats.rejected++;
@@ -980,6 +993,10 @@ function setupEventListeners() {
                     e.preventDefault();
                     swipeAction('mark-invalid');
                     break;
+                case 'u':
+                    e.preventDefault();
+                    undoLastAction();
+                    break;
             }
         }
     });
@@ -990,6 +1007,76 @@ function setupEventListeners() {
             e.preventDefault();
         }
     });
+}
+
+// Undo functionality
+function addToUndoHistory(fish, action, previousStats, previousIndex) {
+    const undoItem = {
+        fish: { ...fish }, // Clone the fish object
+        action: action,
+        previousStats: { ...previousStats },
+        previousIndex: previousIndex,
+        timestamp: Date.now()
+    };
+    
+    undoHistory.push(undoItem);
+    
+    // Keep only the last MAX_UNDO_HISTORY items
+    if (undoHistory.length > MAX_UNDO_HISTORY) {
+        undoHistory.shift();
+    }
+    
+    updateUndoButton();
+}
+
+function updateUndoButton() {
+    const undoBtn = document.getElementById('undoBtn');
+    if (undoHistory.length > 0) {
+        undoBtn.disabled = false;
+        const lastAction = undoHistory[undoHistory.length - 1];
+        const actionText = getActionDisplayName(lastAction.action);
+        undoBtn.title = `Undo Last Action: ${actionText}`;
+    } else {
+        undoBtn.disabled = true;
+        undoBtn.title = 'No actions to undo';
+    }
+}
+
+function getActionDisplayName(action) {
+    const actionNames = {
+        'approve': 'Approve & Validate',
+        'approve-only': 'Approve',
+        'reject': 'Delete & Invalidate', 
+        'reject-only': 'Delete',
+        'skip': 'Skip',
+        'mark-valid': 'Mark Valid',
+        'mark-invalid': 'Mark Invalid'
+    };
+    return actionNames[action] || action;
+}
+
+function undoLastAction() {
+    if (undoHistory.length === 0) {
+        showActionFeedback('error', 'No actions to undo');
+        return;
+    }
+    
+    const lastAction = undoHistory.pop();
+    
+    // Simply restore the fish data and stats without backend operations
+    currentIndex = lastAction.previousIndex;
+    stats = { ...lastAction.previousStats };
+    
+    // Add the fish back to the flaggedFish array at the correct position
+    flaggedFish.splice(currentIndex, 0, lastAction.fish);
+    
+    // Update the display
+    updateStats();
+    showCurrentFish();
+    updateUndoButton();
+    
+    const actionName = getActionDisplayName(lastAction.action);
+    showActionFeedback('error', `↶ Undid: ${actionName}`);
 }
 
 // Utility functions
