@@ -301,6 +301,9 @@ function createFishCard(fishId, fish) {
                     <button onclick="loadReportsForFish('${fishId}')" style="margin-left: 10px; padding: 5px 10px; font-size: 12px;">
                         View Reports
                     </button>
+                    <button onclick="clearReports('${fishId}', this)" style="margin-left: 5px; padding: 5px 10px; font-size: 12px; background: #ff9800; color: white; border: none; border-radius: 3px;">
+                        🧹 Clear Reports
+                    </button>
                 </div>
             </div>
         ` : ''}
@@ -1112,6 +1115,52 @@ function updateFishCardVisual(card, fishId, fish) {
             .replace(/(<strong>Validity:<\/strong>)[^<]*/, `$1 ${validityText}`);
     }
 
+    // Update or remove reports section
+    const reportsSection = card.querySelector('.reports-section');
+    if (reportCount > 0) {
+        // Update reports section if it exists, or recreate it
+        if (!reportsSection) {
+            // Find where to insert the reports section (after fish-info)
+            const fishInfo = card.querySelector('.fish-info');
+            if (fishInfo) {
+                const reportsDiv = document.createElement('div');
+                reportsDiv.className = 'reports-section';
+                reportsDiv.innerHTML = `
+                    <strong>⚠️ Reported Content</strong>
+                    <div class="report-item">
+                        This fish has been reported ${reportCount} time${reportCount > 1 ? 's' : ''}
+                        <button onclick="loadReportsForFish('${fishId}')" style="margin-left: 10px; padding: 5px 10px; font-size: 12px;">
+                            View Reports
+                        </button>
+                        <button onclick="clearReports('${fishId}', this)" style="margin-left: 5px; padding: 5px 10px; font-size: 12px; background: #ff9800; color: white; border: none; border-radius: 3px;">
+                            🧹 Clear Reports
+                        </button>
+                    </div>
+                `;
+                fishInfo.insertAdjacentElement('afterend', reportsDiv);
+            }
+        } else {
+            // Update existing reports section
+            const reportItem = reportsSection.querySelector('.report-item');
+            if (reportItem) {
+                reportItem.innerHTML = `
+                    This fish has been reported ${reportCount} time${reportCount > 1 ? 's' : ''}
+                    <button onclick="loadReportsForFish('${fishId}')" style="margin-left: 10px; padding: 5px 10px; font-size: 12px;">
+                        View Reports
+                    </button>
+                    <button onclick="clearReports('${fishId}', this)" style="margin-left: 5px; padding: 5px 10px; font-size: 12px; background: #ff9800; color: white; border: none; border-radius: 3px;">
+                        🧹 Clear Reports
+                    </button>
+                `;
+            }
+        }
+    } else {
+        // Remove reports section if no reports
+        if (reportsSection) {
+            reportsSection.remove();
+        }
+    }
+
     // Re-enable buttons
     const buttons = card.querySelectorAll('button');
     buttons.forEach(btn => {
@@ -1124,6 +1173,7 @@ function updateFishCardVisual(card, fishId, fish) {
             else btn.textContent = '🚫 Mark as Not Fish';
         }
         if (btn.textContent.includes('Flipping')) btn.textContent = '🔄 Flip';
+        if (btn.textContent.includes('Clearing')) btn.textContent = '🧹 Clear Reports';
     });
 }
 
@@ -1143,6 +1193,10 @@ function updateStatsAfterAction(action) {
             break;
         case 'mark_not_fish':
             stats.invalid++;
+            break;
+        case 'clear_reports':
+            // Flagged count might decrease if the fish was flagged
+            stats.flagged = Math.max(0, stats.flagged - 1);
             break;
     }
     updateStatsDisplay();
@@ -1164,6 +1218,9 @@ function updateStatsAfterBulkAction(action, count) {
             break;
         case 'mark_not_fish':
             stats.invalid += count;
+            break;
+        case 'clear_reports':
+            stats.flagged -= count;
             break;
     }
     updateStatsDisplay();
@@ -1267,5 +1324,167 @@ async function unbanUser(userId, userName, button) {
         console.error('Error unbanning user:', error);
         button.disabled = false;
         button.textContent = '✅ Unban User';
+    }
+}
+
+// Clear reports for a fish
+async function clearReports(fishId, button) {
+    if (!confirm('Are you sure you want to clear all reports for this fish? This action cannot be undone.')) {
+        return;
+    }
+
+    button.disabled = true;
+    button.textContent = 'Clearing...';
+
+    try {
+        const token = localStorage.getItem('userToken');
+        const response = await fetch(`${API_BASE_URL}/moderate/clear-reports/${fishId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ reason: 'Reports cleared via moderation panel' })
+        });
+
+        if (response.ok) {
+            // Update local state to remove report indicators
+            updateFishCardState(fishId, { 
+                reportCount: 0, 
+                uniqueReporterCount: 0,
+                flaggedForReview: false,
+                lastReportedAt: null,
+                flaggedAt: null
+            });
+            updateStatsAfterAction('clear_reports');
+        } else {
+            button.disabled = false;
+            button.textContent = '🧹 Clear Reports';
+        }
+    } catch (error) {
+        console.error('Error clearing reports:', error);
+        button.disabled = false;
+        button.textContent = '🧹 Clear Reports';
+    }
+}
+
+// Bulk clear reports for selected fish
+async function bulkClearReports() {
+    if (selectedFish.size === 0) return;
+
+    if (!confirm(`Are you sure you want to clear all reports for ${selectedFish.size} selected fish? This action cannot be undone.`)) {
+        return;
+    }
+
+    try {
+        const token = localStorage.getItem('userToken');
+        const response = await fetch(`${API_BASE_URL}/moderate/bulk-review`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                fishIds: Array.from(selectedFish),
+                action: 'clear_reports',
+                reason: 'Bulk reports clearing'
+            })
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            
+            // Update local state for successful report clearings
+            if (result.results) {
+                result.results.forEach(item => {
+                    if (item.success) {
+                        updateFishCardState(item.fishId, { 
+                            reportCount: 0, 
+                            uniqueReporterCount: 0,
+                            flaggedForReview: false,
+                            lastReportedAt: null,
+                            flaggedAt: null
+                        });
+                    }
+                });
+            }
+            
+            clearSelection();
+            updateStatsAfterBulkAction('clear_reports', result.summary.successful);
+        }
+    } catch (error) {
+        console.error('Error in bulk clear reports:', error);
+        alert('Error clearing reports. Please try again.');
+    }
+}
+
+// Bulk ban users for selected fish
+async function bulkBanUsers() {
+    if (selectedFish.size === 0) return;
+
+    // Get unique user IDs from selected fish
+    const userIds = new Set();
+    const userNames = new Map();
+    
+    selectedFish.forEach(fishId => {
+        const fishIndex = fishCache.findIndex(doc => doc.id === fishId);
+        if (fishIndex !== -1) {
+            const fish = fishCache[fishIndex].data();
+            if (fish.userId && fish.Artist && fish.Artist !== 'Anonymous') {
+                userIds.add(fish.userId);
+                userNames.set(fish.userId, fish.Artist);
+            }
+        }
+    });
+
+    if (userIds.size === 0) {
+        alert('No users found to ban from the selected fish.');
+        return;
+    }
+
+    const userList = Array.from(userIds).map(userId => userNames.get(userId)).join(', ');
+    if (!confirm(`Are you sure you want to ban ${userIds.size} user(s): ${userList}? This action will affect all their content.`)) {
+        return;
+    }
+
+    try {
+        const token = localStorage.getItem('userToken');
+        let successCount = 0;
+        let failureCount = 0;
+
+        // Ban users one by one (could be optimized with a bulk endpoint if needed)
+        for (const userId of userIds) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/moderate/ban/${userId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ reason: 'Bulk ban via moderation panel' })
+                });
+
+                if (response.ok) {
+                    successCount++;
+                } else {
+                    failureCount++;
+                }
+            } catch (error) {
+                console.error(`Error banning user ${userId}:`, error);
+                failureCount++;
+            }
+        }
+
+        if (successCount > 0) {
+            alert(`Successfully banned ${successCount} user(s).${failureCount > 0 ? ` ${failureCount} failed.` : ''}`);
+            loadFish(); // Refresh to show updated content
+        } else {
+            alert('Failed to ban any users. Please try again.');
+        }
+
+        clearSelection();
+    } catch (error) {
+        console.error('Error in bulk ban users:', error);
+        alert('Error banning users. Please try again.');
     }
 }
