@@ -421,6 +421,13 @@ async function saveProfile() {
         return;
     }
 
+    // Check if user is logged in
+    const token = localStorage.getItem('userToken');
+    if (!token) {
+        alert('You must be logged in to edit your profile');
+        return;
+    }
+
     try {
         // Show loading state on save button
         const saveBtn = document.querySelector('.save-btn');
@@ -431,17 +438,26 @@ async function saveProfile() {
         saveBtn.disabled = true;
         cancelBtn.disabled = true;
 
-        // Get current user ID
+        // Get current user ID and token
         const userData = JSON.parse(localStorage.getItem('userData') || '{}');
         const userIdFromStorage = localStorage.getItem('userId');
         const userId = userIdFromStorage || userData.uid || userData.userId || userData.id || userData.email;
+        const token = localStorage.getItem('userToken');
+
+        // Prepare headers
+        const headers = {
+            'Content-Type': 'application/json',
+        };
+
+        // Add authorization header if user is logged in
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
 
         // Update profile via API
         const response = await fetch(`${BACKEND_URL}/api/profile/${encodeURIComponent(userId)}`, {
             method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            headers: headers,
             body: JSON.stringify({
                 displayName: newDisplayName
             })
