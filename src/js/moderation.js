@@ -31,8 +31,11 @@ window.onload = async function () {
         return;
     }
 
-    await loadStats();
-    await loadFish();
+    // Load stats and fish in parallel for faster loading
+    await Promise.all([
+        loadStats(),
+        loadFish()
+    ]);
 
     // Add keyboard shortcuts
     setupKeyboardShortcuts();
@@ -57,52 +60,14 @@ async function loadStats() {
         updateStatsDisplay();
     } catch (error) {
         console.error('Error loading stats:', error);
-        // Fallback to Firebase if backend is not available
-        // Show a loading message while Firebase stats are loading
-        document.getElementById('totalFish').textContent = 'Loading...';
-        document.getElementById('flaggedFish').textContent = 'Loading...';
-        document.getElementById('approvedFish').textContent = 'Loading...';
-        document.getElementById('deletedFish').textContent = 'Loading...';
-        document.getElementById('pendingFish').textContent = 'Loading...';
-        document.getElementById('validFish').textContent = 'Loading...';
-        document.getElementById('invalidFish').textContent = 'Loading...';
-        
-        await loadStatsFromFirebase();
-    }
-}
-
-// Fallback Firebase stats loading
-async function loadStatsFromFirebase() {
-    try {
-        // Run all count queries in parallel for better performance
-        // Use select() to only fetch document IDs, not data
-        const [
-            allFishSnapshot,
-            flaggedFishSnapshot,
-            approvedFishSnapshot,
-            deletedFishSnapshot,
-            validFishSnapshot,
-            invalidFishSnapshot
-        ] = await Promise.all([
-            window.db.collection('fishes_test').select().get(),
-            window.db.collection('fishes_test').where('flaggedForReview', '==', true).select().get(),
-            window.db.collection('fishes_test').where('approved', '==', true).select().get(),
-            window.db.collection('fishes_test').where('deleted', '==', true).select().get(),
-            window.db.collection('fishes_test').where('isFish', '==', true).select().get(),
-            window.db.collection('fishes_test').where('isFish', '==', false).select().get()
-        ]);
-
-        stats.total = allFishSnapshot.size;
-        stats.flagged = flaggedFishSnapshot.size;
-        stats.approved = approvedFishSnapshot.size;
-        stats.deleted = deletedFishSnapshot.size;
-        stats.valid = validFishSnapshot.size;
-        stats.invalid = invalidFishSnapshot.size;
-        stats.pending = stats.total - stats.approved - stats.deleted;
-
-        updateStatsDisplay();
-    } catch (error) {
-        console.error('Error loading stats from Firebase:', error);
+        // Show error state
+        document.getElementById('totalFish').textContent = 'Error';
+        document.getElementById('flaggedFish').textContent = 'Error';
+        document.getElementById('approvedFish').textContent = 'Error';
+        document.getElementById('deletedFish').textContent = 'Error';
+        document.getElementById('pendingFish').textContent = 'Error';
+        document.getElementById('validFish').textContent = 'Error';
+        document.getElementById('invalidFish').textContent = 'Error';
     }
 }
 
