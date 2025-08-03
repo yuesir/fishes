@@ -308,12 +308,20 @@ function createFishCard(fish, stackIndex) {
                     '🚩 Flagged for Review'
                 }
             </div>
+            
+            ${fish.userId || fish.ipAddress || fish.lastKnownIP ? `
+                <div class="ban-info">
+                    <strong>User:</strong> ${escapeHtml(fish.Artist || fish.artist || 'Anonymous')}
+                    ${fish.userId ? `(ID: ${fish.userId.substring(0, 8)}...)` : '(Anonymous)'}
+                </div>
+            ` : ''}
         </div>
         
         <div class="swipe-indicator reject">🗑️</div>
         <div class="swipe-indicator approve">✅</div>
         <div class="swipe-indicator skip">⏭️</div>
         <div class="swipe-indicator rotate">🔄</div>
+        <div class="swipe-indicator ban">🚫</div>
     `;
 
     // Add touch/mouse event listeners only to the top card
@@ -406,6 +414,16 @@ function handleMove(e) {
             }
         }
         
+        // Check for diagonal swipe for ban (down-left)
+        if (deltaX < -threshold && deltaY > threshold && Math.abs(deltaX) + Math.abs(deltaY) > threshold * 2) {
+            // Hide other indicators and show ban
+            indicators.forEach(indicator => indicator.classList.remove('show'));
+            card.querySelector('.swipe-indicator.ban').classList.add('show');
+            // Visual feedback for ban direction
+            card.style.borderColor = '#ff0000';
+            card.style.boxShadow = '0 15px 40px rgba(255, 0, 0, 0.4)';
+        }
+        
         // Simulate haptic feedback on mobile devices
         if (navigator.vibrate && Math.abs(deltaX) > threshold * 1.5) {
             navigator.vibrate(10); // Very short vibration
@@ -433,7 +451,10 @@ function handleEnd(e) {
     // Determine swipe action
     let action = null;
     if (Math.abs(deltaX) > threshold || Math.abs(deltaY) > threshold) {
-        if (Math.abs(deltaX) > Math.abs(deltaY)) {
+        // Check for diagonal swipe for ban (down-left)
+        if (deltaX < -threshold && deltaY > threshold && Math.abs(deltaX) + Math.abs(deltaY) > threshold * 2) {
+            action = 'ban';
+        } else if (Math.abs(deltaX) > Math.abs(deltaY)) {
             // Horizontal swipe
             if (deltaX > threshold) {
                 action = 'approve';
@@ -458,6 +479,9 @@ function handleEnd(e) {
         } else if (action === 'reject') {
             // Swipe left: delete AND invalidate  
             performSwipeAction('reject', card);
+        } else if (action === 'ban') {
+            // Diagonal swipe: ban user AND delete fish
+            performSwipeAction('ban', card);
         } else {
             // Other actions remain the same
             performSwipeAction(action, card);
@@ -533,6 +557,11 @@ async function performSwipeAction(action, card) {
             card.style.boxShadow = '0 20px 50px rgba(220, 53, 69, 0.4)';
             card.classList.add('swiping-left');
             break;
+        case 'ban':
+            card.style.borderColor = '#ff0000';
+            card.style.boxShadow = '0 20px 50px rgba(255, 0, 0, 0.5)';
+            card.classList.add('swiping-ban');
+            break;
         case 'skip':
             card.style.borderColor = '#6c757d';
             card.style.boxShadow = '0 20px 50px rgba(108, 117, 125, 0.4)';
@@ -551,7 +580,7 @@ async function performSwipeAction(action, card) {
     }
     
     // Show the next card preview by animating remaining cards moving up smoothly
-    const remainingCards = document.querySelectorAll('.fish-card:not(.swiping-left):not(.swiping-right):not(.swiping-up)');
+    const remainingCards = document.querySelectorAll('.fish-card:not(.swiping-left):not(.swiping-right):not(.swiping-up):not(.swiping-ban)');
     remainingCards.forEach((remainingCard, index) => {
         if (index > 0) {
             // Instead of hiding, animate the next card to preview position
@@ -562,7 +591,7 @@ async function performSwipeAction(action, card) {
     });
     
     // Update stats immediately for responsiveness (only for actions that remove the card)
-    if (['approve', 'approve-only', 'reject', 'reject-only', 'skip', 'mark-valid', 'mark-invalid'].includes(action)) {
+    if (['approve', 'approve-only', 'reject', 'reject-only', 'skip', 'mark-valid', 'mark-invalid', 'ban'].includes(action)) {
         // Save to undo history before making changes (only for actions that remove cards)
         const fishData = flaggedFish[currentIndex];
         const previousStats = { ...stats };
@@ -573,7 +602,7 @@ async function performSwipeAction(action, card) {
         
         stats.remaining--;
         if (action === 'approve' || action === 'approve-only') stats.approved++;
-        else if (action === 'reject' || action === 'reject-only') stats.rejected++;
+        else if (action === 'reject' || action === 'reject-only' || action === 'ban') stats.rejected++;
         else if (action === 'skip') stats.skipped++;
         else if (action === 'mark-valid') stats.approved++;
         else if (action === 'mark-invalid') stats.rejected++;
@@ -602,6 +631,7 @@ function showActionFeedback(action, customMessage = null) {
         'approve-only': '✅ Fish approved!',
         reject: '🗑️ Fish deleted & invalidated!',
         'reject-only': '🗑️ Fish deleted!',
+        ban: '🚫 User banned & fish deleted!',
         skip: '⏭️ Fish skipped!',
         'mark-valid': '🐟 Marked as valid fish!',
         'mark-invalid': '🚫 Marked as invalid fish!',
@@ -614,6 +644,7 @@ function showActionFeedback(action, customMessage = null) {
         'approve-only': '#28a745',
         reject: '#dc3545',
         'reject-only': '#dc3545',
+        ban: '#ff0000',
         skip: '#6c757d',
         'mark-valid': '#2196F3',
         'mark-invalid': '#FF9800',
@@ -828,6 +859,39 @@ async function processSwipeAction(action, fishId) {
         
         if (!validityResponse.ok) throw new Error('Failed to mark as invalid fish');
         
+    } else if (action === 'ban') {
+        // Ban user AND delete fish
+        const fish = flaggedFish[currentIndex];
+        const userId = fish.userId || fish.ipAddress || fish.lastKnownIP;
+        
+        if (!userId) {
+            throw new Error('No user identifier found for banning');
+        }
+        
+        // First ban the user
+        const banResponse = await fetch(`${API_BASE_URL}/moderate/ban/${userId}`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ reason: 'Banned via swipe moderation' })
+        });
+        
+        if (!banResponse.ok) throw new Error('Failed to ban user');
+        
+        // Then delete the fish
+        const deleteResponse = await fetch(`${API_BASE_URL}/moderate/delete/${fishId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ reason: 'Deleted via swipe moderation (user banned)' })
+        });
+        
+        if (!deleteResponse.ok) throw new Error('Failed to delete fish after ban');
+        
     } else if (action === 'rotate') {
         // Use the flip endpoint for rotation functionality
         try {
@@ -890,7 +954,7 @@ function swipeAction(action) {
             // Button delete: only delete, don't mark validity
             performSwipeAction('reject-only', topCard);
         } else {
-            // Other button actions remain the same
+            // Other button actions remain the same (including ban)
             performSwipeAction(action, topCard);
         }
     }
@@ -910,10 +974,12 @@ function handleSwipeGesture(direction) {
                 break;
             case 'up':
                 action = 'skip';
-                break;
-            case 'down':
-                action = 'rotate';
-                break;
+                break;                case 'down':
+                    action = 'rotate';
+                    break;
+                case 'down-left':
+                    action = 'ban';
+                    break;
         }
         if (action) {
             performSwipeAction(action, topCard);
@@ -997,6 +1063,10 @@ function setupEventListeners() {
                     e.preventDefault();
                     undoLastAction();
                     break;
+                case 'b':
+                    e.preventDefault();
+                    swipeAction('ban');
+                    break;
             }
         }
     });
@@ -1048,6 +1118,7 @@ function getActionDisplayName(action) {
         'approve-only': 'Approve',
         'reject': 'Delete & Invalidate', 
         'reject-only': 'Delete',
+        'ban': 'Ban User & Delete',
         'skip': 'Skip',
         'mark-valid': 'Mark Valid',
         'mark-invalid': 'Mark Invalid'
