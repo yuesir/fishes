@@ -1248,8 +1248,9 @@ async function banUser(userId, userName, button) {
         });
 
         if (response.ok) {
-            // Refresh the page to update all fish from this user
-            loadFish();
+            // Update all fish cards from this user locally
+            updateFishCardsForUser(userId, { banned: true });
+            button.textContent = '✅ User Banned';
         } else {
             button.disabled = false;
             button.textContent = '🚫 Ban User';
@@ -1282,8 +1283,9 @@ async function unbanUser(userId, userName, button) {
         });
 
         if (response.ok) {
-            // Refresh the page to update all fish from this user
-            loadFish();
+            // Update all fish cards from this user locally
+            updateFishCardsForUser(userId, { banned: false });
+            button.textContent = '🚫 User Unbanned';
         } else {
             button.disabled = false;
             button.textContent = '✅ Unban User';
@@ -1444,8 +1446,12 @@ async function bulkBanUsers() {
         }
 
         if (successCount > 0) {
+            // Update all affected users' fish cards locally
+            userIds.forEach(userId => {
+                updateFishCardsForUser(userId, { banned: true });
+            });
+            
             alert(`Successfully banned ${successCount} user(s).${failureCount > 0 ? ` ${failureCount} failed.` : ''}`);
-            loadFish(); // Refresh to show updated content
         } else {
             alert('Failed to ban any users. Please try again.');
         }
@@ -1455,4 +1461,40 @@ async function bulkBanUsers() {
         console.error('Error in bulk ban users:', error);
         alert('Error banning users. Please try again.');
     }
+}
+
+// Helper function to update all fish cards for a specific user
+function updateFishCardsForUser(userId, updates) {
+    // Find all fish cards from this user and update them
+    fishCache.forEach((doc, index) => {
+        const fish = doc.data();
+        if (fish.userId === userId || fish.ipAddress === userId || fish.lastKnownIP === userId) {
+            // Update the fish data in cache
+            Object.assign(fish, updates);
+            
+            // Update the visual card
+            const fishCard = document.querySelector(`[data-fish-id="${doc.id}"]`);
+            if (fishCard) {
+                updateFishCardVisual(fishCard, doc.id, fish);
+                
+                // Update ban/unban button states
+                const banBtn = fishCard.querySelector('button[onclick*="banUser"]');
+                const unbanBtn = fishCard.querySelector('button[onclick*="unbanUser"]');
+                
+                if (updates.banned === true) {
+                    if (banBtn) banBtn.textContent = '✅ User Banned';
+                    if (unbanBtn) {
+                        unbanBtn.disabled = false;
+                        unbanBtn.textContent = '✅ Unban User';
+                    }
+                } else if (updates.banned === false) {
+                    if (unbanBtn) unbanBtn.textContent = '🚫 User Unbanned';
+                    if (banBtn) {
+                        banBtn.disabled = false;
+                        banBtn.textContent = '🚫 Ban User';
+                    }
+                }
+            }
+        }
+    });
 }
