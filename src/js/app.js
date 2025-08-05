@@ -218,66 +218,97 @@ function createPaintOptions() {
         paintBar = document.createElement('div');
         paintBar.id = 'paint-bar';
         paintBar.style.display = 'flex';
+        paintBar.style.flexWrap = 'wrap';
         paintBar.style.gap = '8px';
         paintBar.style.margin = '8px auto';
         paintBar.style.alignItems = 'center';
         paintBar.style.justifyContent = 'center';
         paintBar.style.padding = '6px 10px';
+        paintBar.style.maxWidth = '100%';
+        paintBar.style.overflowX = 'auto';
         // Insert at the top of draw-ui
         const drawUI = document.getElementById('draw-ui');
         if (drawUI) drawUI.insertBefore(paintBar, drawUI.firstChild);
     } else {
         paintBar.innerHTML = '';
     }
+    
+    // Create a container for colors to make them wrap better on mobile
+    const colorContainer = document.createElement('div');
+    colorContainer.style.display = 'flex';
+    colorContainer.style.flexWrap = 'wrap';
+    colorContainer.style.gap = '4px';
+    colorContainer.style.alignItems = 'center';
+    
     // Color buttons
     colors.forEach(color => {
         const btn = document.createElement('button');
         btn.style.background = color;
-        btn.style.width = '28px';
-        btn.style.height = '28px';
+        btn.style.width = '24px';
+        btn.style.height = '24px';
+        btn.style.minWidth = '24px';
+        btn.style.minHeight = '24px';
         btn.style.border = '1px solid #000';
         btn.style.cursor = 'pointer';
+        btn.style.borderRadius = '50%';
         btn.title = color;
         btn.onclick = () => {
             ctx.globalCompositeOperation = 'source-over';
             currentColor = color;
             ctx.strokeStyle = color;
         };
-        paintBar.appendChild(btn); 
+        colorContainer.appendChild(btn); 
     });
+    paintBar.appendChild(colorContainer);
+
+    // Create a controls container for better mobile layout
+    const controlsContainer = document.createElement('div');
+    controlsContainer.style.display = 'flex';
+    controlsContainer.style.flexWrap = 'wrap';
+    controlsContainer.style.gap = '8px';
+    controlsContainer.style.alignItems = 'center';
+    controlsContainer.style.justifyContent = 'center';
+    controlsContainer.style.marginTop = '8px';
 
     // Eraser
     const eraserBtn = document.createElement('button');
     eraserBtn.textContent = 'Eraser';
-    eraserBtn.style.marginLeft = '16px';
-    eraserBtn.style.padding = '0 12px';
-    eraserBtn.style.height = '28px';
-    eraserBtn.style.borderRadius = '6px';
+    eraserBtn.style.padding = '4px 8px';
+    eraserBtn.style.height = '24px';
+    eraserBtn.style.fontSize = '12px';
+    eraserBtn.style.borderRadius = '4px';
     eraserBtn.style.cursor = 'pointer';
     eraserBtn.onclick = () => {
         ctx.globalCompositeOperation = 'destination-out';
         ctx.strokeStyle = '#000000';
         ctx.lineWidth = currentLineWidth;
     };
-    paintBar.appendChild(eraserBtn);
+    controlsContainer.appendChild(eraserBtn);
 
-    // Line width
+    // Line width container
+    const widthContainer = document.createElement('div');
+    widthContainer.style.display = 'flex';
+    widthContainer.style.alignItems = 'center';
+    widthContainer.style.gap = '4px';
+    
     const widthLabel = document.createElement('span');
-    widthLabel.textContent = 'Line width:';
-    widthLabel.style.marginLeft = '12px';
-    paintBar.appendChild(widthLabel);
+    widthLabel.textContent = 'Size:';
+    widthLabel.style.fontSize = '12px';
+    widthContainer.appendChild(widthLabel);
+    
     const widthSlider = document.createElement('input');
     widthSlider.type = 'range';
     widthSlider.min = 1;
     widthSlider.max = 20;
     widthSlider.value = currentLineWidth;
-    widthSlider.style.width = '100px';
-    widthSlider.style.marginLeft = '12px';
+    widthSlider.style.width = '80px';
     widthSlider.oninput = () => {
         currentLineWidth = widthSlider.value;
     };
-    paintBar.appendChild(widthSlider);
-
+    widthContainer.appendChild(widthSlider);
+    controlsContainer.appendChild(widthContainer);
+    
+    paintBar.appendChild(controlsContainer);
 }
 createPaintOptions();
 
@@ -343,45 +374,57 @@ function flipCanvas() {
 function createUndoButton() {
     let paintBar = document.getElementById('paint-bar');
     if (paintBar) {
-        const undoBtn = document.createElement('button');
-        undoBtn.textContent = 'Undo';
-        undoBtn.style.marginLeft = '16px';
-        undoBtn.style.padding = '0 12px';
-        undoBtn.style.height = '28px';
-        undoBtn.style.borderRadius = '6px';
-        undoBtn.style.cursor = 'pointer';
-        undoBtn.onclick = undo;
-        paintBar.appendChild(undoBtn);
+        // Find the controls container
+        let controlsContainer = paintBar.querySelector('div:last-child');
+        if (controlsContainer) {
+            const undoBtn = document.createElement('button');
+            undoBtn.textContent = 'Undo';
+            undoBtn.style.padding = '4px 8px';
+            undoBtn.style.height = '24px';
+            undoBtn.style.fontSize = '12px';
+            undoBtn.style.borderRadius = '4px';
+            undoBtn.style.cursor = 'pointer';
+            undoBtn.onclick = undo;
+            controlsContainer.appendChild(undoBtn);
+        }
     }
 }
 
 function createClearButton() {
     let paintBar = document.getElementById('paint-bar');
     if (paintBar) {
-        const clearBtn = document.createElement('button');
-        clearBtn.textContent = 'Clear';
-        clearBtn.style.marginLeft = '16px';
-        clearBtn.style.padding = '0 12px';
-        clearBtn.style.height = '28px';
-        clearBtn.style.borderRadius = '6px';
-        clearBtn.style.cursor = 'pointer';
-        clearBtn.onclick = clearCanvas;
-        paintBar.appendChild(clearBtn);
+        // Find the controls container
+        let controlsContainer = paintBar.querySelector('div:last-child');
+        if (controlsContainer) {
+            const clearBtn = document.createElement('button');
+            clearBtn.textContent = 'Clear';
+            clearBtn.style.padding = '4px 8px';
+            clearBtn.style.height = '24px';
+            clearBtn.style.fontSize = '12px';
+            clearBtn.style.borderRadius = '4px';
+            clearBtn.style.cursor = 'pointer';
+            clearBtn.onclick = clearCanvas;
+            controlsContainer.appendChild(clearBtn);
+        }
     }
 }
 
 function createFlipButton() {
     let paintBar = document.getElementById('paint-bar');
     if (paintBar) {
-        const flipBtn = document.createElement('button');
-        flipBtn.textContent = 'Flip';
-        flipBtn.style.marginLeft = '16px';
-        flipBtn.style.padding = '0 12px';
-        flipBtn.style.height = '28px';
-        flipBtn.style.borderRadius = '6px';
-        flipBtn.style.cursor = 'pointer';
-        flipBtn.onclick = flipCanvas;
-        paintBar.appendChild(flipBtn);
+        // Find the controls container
+        let controlsContainer = paintBar.querySelector('div:last-child');
+        if (controlsContainer) {
+            const flipBtn = document.createElement('button');
+            flipBtn.textContent = 'Flip';
+            flipBtn.style.padding = '4px 8px';
+            flipBtn.style.height = '24px';
+            flipBtn.style.fontSize = '12px';
+            flipBtn.style.borderRadius = '4px';
+            flipBtn.style.cursor = 'pointer';
+            flipBtn.onclick = flipCanvas;
+            controlsContainer.appendChild(flipBtn);
+        }
     }
 }
 
