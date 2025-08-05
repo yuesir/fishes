@@ -277,6 +277,7 @@ function createPaintOptions() {
         currentLineWidth = widthSlider.value;
     };
     paintBar.appendChild(widthSlider);
+
 }
 createPaintOptions();
 
@@ -300,6 +301,42 @@ function undo() {
 
 function clearCanvas() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    checkFishAfterStroke();
+}
+
+function flipCanvas() {
+    // Save current state to undo stack before flipping
+    pushUndo();
+    
+    // Get current canvas content
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    
+    // Create a temporary canvas to perform the flip
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+    
+    // Put the current image data on the temp canvas
+    tempCtx.putImageData(imageData, 0, 0);
+    
+    // Clear the main canvas
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Save the context state
+    ctx.save();
+    
+    // Flip horizontally by scaling x by -1 and translating
+    ctx.scale(-1, 1);
+    ctx.translate(-canvas.width, 0);
+    
+    // Draw the flipped image
+    ctx.drawImage(tempCanvas, 0, 0);
+    
+    // Restore the context state
+    ctx.restore();
+    
+    // Recompute fish score after flipping
     checkFishAfterStroke();
 }
 
@@ -333,6 +370,21 @@ function createClearButton() {
     }
 }
 
+function createFlipButton() {
+    let paintBar = document.getElementById('paint-bar');
+    if (paintBar) {
+        const flipBtn = document.createElement('button');
+        flipBtn.textContent = 'Flip';
+        flipBtn.style.marginLeft = '16px';
+        flipBtn.style.padding = '0 12px';
+        flipBtn.style.height = '28px';
+        flipBtn.style.borderRadius = '6px';
+        flipBtn.style.cursor = 'pointer';
+        flipBtn.onclick = flipCanvas;
+        paintBar.appendChild(flipBtn);
+    }
+}
+
 // Push to undo stack before every new stroke
 canvas.addEventListener('mousedown', pushUndo);
 canvas.addEventListener('touchstart', pushUndo);
@@ -342,6 +394,9 @@ createUndoButton();
 
 // Add clear button to paint bar
 createClearButton();
+
+// Add flip button to paint bar
+createFlipButton();
 
 // Update drawing color and line width
 canvas.addEventListener('mousedown', () => {
