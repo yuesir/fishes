@@ -33,7 +33,7 @@ function dropFoodPellet(x, y) {
         const offsetY = (Math.random() - 0.5) * 10;
         foodPellets.push(createFoodPellet(x + offsetX, y + offsetY));
     }
-    
+
     // Add visual feedback for feeding
     createFeedingEffect(x, y);
 }
@@ -48,7 +48,7 @@ function createFeedingEffect(x, y) {
         duration: 300,
         type: 'feeding'
     };
-    
+
     // Create small splash particles
     for (let i = 0; i < 8; i++) {
         const angle = (Math.PI * 2 * i) / 8;
@@ -60,7 +60,7 @@ function createFeedingEffect(x, y) {
             life: 1
         });
     }
-    
+
     // Store effect for rendering
     if (!window.feedingEffects) window.feedingEffects = [];
     window.feedingEffects.push(effect);
@@ -69,33 +69,33 @@ function createFeedingEffect(x, y) {
 function updateFoodPellets() {
     for (let i = foodPellets.length - 1; i >= 0; i--) {
         const pellet = foodPellets[i];
-        
+
         // Remove consumed or expired pellets
         if (pellet.consumed || Date.now() - pellet.createdAt > FOOD_LIFESPAN) {
             foodPellets.splice(i, 1);
             continue;
         }
-        
+
         // Apply gravity
         pellet.vy += FOOD_FALL_SPEED; // Slower gravity acceleration
         pellet.y += pellet.vy;
-        
+
         // Stop at bottom of tank
         if (pellet.y > swimCanvas.height - pellet.size) {
             pellet.y = swimCanvas.height - pellet.size;
             pellet.vy = 0;
         }
-        
+
         // Check for fish consumption
         for (let fish of fishes) {
             if (fish.isDying || fish.isEntering) continue;
-            
+
             const fishCenterX = fish.x + fish.width / 2;
             const fishCenterY = fish.y + fish.height / 2;
             const dx = pellet.x - fishCenterX;
             const dy = pellet.y - fishCenterY;
             const distance = Math.sqrt(dx * dx + dy * dy);
-            
+
             // If fish is close enough, consume the pellet
             if (distance < fish.width / 2 + pellet.size) {
                 pellet.consumed = true;
@@ -116,7 +116,7 @@ function createFoodConsumptionEffect(x, y) {
         createdAt: Date.now(),
         duration: 500
     };
-    
+
     // Create small particles
     for (let i = 0; i < 5; i++) {
         effect.particles.push({
@@ -127,7 +127,7 @@ function createFoodConsumptionEffect(x, y) {
             life: 1
         });
     }
-    
+
     // Store effect for rendering (we'll add this to the animation loop)
     if (!window.foodEffects) window.foodEffects = [];
     window.foodEffects.push(effect);
@@ -136,7 +136,7 @@ function createFoodConsumptionEffect(x, y) {
 function renderFoodPellets() {
     if (foodPellets.length > 0) {
         swimCtx.fillStyle = '#FF6B35'; // Orange color for better visibility
-        
+
         for (const pellet of foodPellets) {
             if (!pellet.consumed) {
                 swimCtx.beginPath();
@@ -149,64 +149,64 @@ function renderFoodPellets() {
 
 function renderFoodEffects() {
     if (!window.foodEffects) return;
-    
+
     for (let i = window.foodEffects.length - 1; i >= 0; i--) {
         const effect = window.foodEffects[i];
         const elapsed = Date.now() - effect.createdAt;
         const progress = elapsed / effect.duration;
-        
+
         if (progress >= 1) {
             window.foodEffects.splice(i, 1);
             continue;
         }
-        
+
         swimCtx.save();
         swimCtx.globalAlpha = 1 - progress;
         swimCtx.fillStyle = '#FFD700'; // Gold color for consumption effect
-        
+
         for (const particle of effect.particles) {
             particle.x += particle.vx;
             particle.y += particle.vy;
             particle.vx *= 0.98; // Slight drag
             particle.vy *= 0.98;
-            
+
             swimCtx.beginPath();
             swimCtx.arc(particle.x, particle.y, 1, 0, Math.PI * 2);
             swimCtx.fill();
         }
-        
+
         swimCtx.restore();
     }
 }
 
 function renderFeedingEffects() {
     if (!window.feedingEffects) return;
-    
+
     for (let i = window.feedingEffects.length - 1; i >= 0; i--) {
         const effect = window.feedingEffects[i];
         const elapsed = Date.now() - effect.createdAt;
         const progress = elapsed / effect.duration;
-        
+
         if (progress >= 1) {
             window.feedingEffects.splice(i, 1);
             continue;
         }
-        
+
         swimCtx.save();
         swimCtx.globalAlpha = 1 - progress;
         swimCtx.fillStyle = '#4CAF50'; // Green color for feeding effect
-        
+
         for (const particle of effect.particles) {
             particle.x += particle.vx;
             particle.y += particle.vy;
             particle.vx *= 0.95; // Slight drag
             particle.vy *= 0.95;
-            
+
             swimCtx.beginPath();
             swimCtx.arc(particle.x, particle.y, 2, 0, Math.PI * 2);
             swimCtx.fill();
         }
-        
+
         swimCtx.restore();
     }
 }
@@ -407,7 +407,7 @@ function loadFishImageToTank(imgUrl, fishData, onDone) {
                 score: fishData.score || 0,
                 userId: fishData.userId || fishData.UserId || null
             });
-            
+
             // Add entrance animation for new fish
             if (fishData.docId && fishes.length >= maxTankCapacity - 1) {
                 fishObj.isEntering = true;
@@ -416,7 +416,7 @@ function loadFishImageToTank(imgUrl, fishData, onDone) {
                 fishObj.opacity = 0;
                 fishObj.scale = 0.3;
             }
-            
+
             fishes.push(fishObj);
 
             if (onDone) onDone(fishObj);
@@ -478,44 +478,44 @@ async function updateTankCapacity(newCapacity) {
     if (isUpdatingCapacity) {
         return;
     }
-    
+
     isUpdatingCapacity = true;
-    
+
     // Show loading indicator
     const loadingIndicator = document.getElementById('loading-indicator');
     if (loadingIndicator) {
         loadingIndicator.style.display = 'block';
         loadingIndicator.textContent = 'updating tank...';
     }
-    
+
     const oldCapacity = maxTankCapacity;
     maxTankCapacity = newCapacity;
-    
+
     // Update the display
     const displayElement = document.getElementById('fish-count-display');
     if (displayElement) {
         displayElement.textContent = newCapacity;
     }
-    
+
     // Update current fish count display
     updateCurrentFishCount();
-    
+
     // Update page title
     const sortSelect = document.getElementById('tank-sort');
     if (sortSelect) {
         updatePageTitle(sortSelect.value);
     }
-    
+
     // Update URL parameter
     const newUrl = new URL(window.location);
     newUrl.searchParams.set('capacity', newCapacity);
     window.history.replaceState({}, '', newUrl);
-    
+
     // If capacity decreased, remove excess fish with death animation
     if (newCapacity < fishes.length) {
         const currentFishCount = fishes.filter(f => !f.isDying).length;
         const excessCount = Math.max(0, currentFishCount - newCapacity);
-                
+
         // Get references to fish that are not already dying, sorted by creation date (oldest first)
         const aliveFish = fishes.filter(f => !f.isDying).sort((a, b) => {
             const dateA = a.createdAt;
@@ -523,12 +523,17 @@ async function updateTankCapacity(newCapacity) {
             if (!dateA && !dateB) return 0;
             if (!dateA) return -1; // Fish without creation date go first
             if (!dateB) return 1;
-            return dateA.toDate() - dateB.toDate(); // Oldest first
+            
+            // Handle both Date objects and string timestamps
+            const timeA = dateA instanceof Date ? dateA.getTime() : new Date(dateA).getTime();
+            const timeB = dateB instanceof Date ? dateB.getTime() : new Date(dateB).getTime();
+            
+            return timeA - timeB; // Oldest first
         });
-        
+
         // Remove the oldest fish first
         const fishToRemove = aliveFish.slice(0, excessCount);
-                
+
         // Stagger the death animations to avoid overwhelming the system
         fishToRemove.forEach((fishObj, i) => {
             setTimeout(() => {
@@ -545,16 +550,16 @@ async function updateTankCapacity(newCapacity) {
         const sortSelect = document.getElementById('tank-sort');
         const currentSort = sortSelect ? sortSelect.value : 'recent';
         const neededCount = newCapacity - fishes.length;
-        
+
         // Load additional fish
         await loadAdditionalFish(currentSort, neededCount);
     }
-    
+
     // Hide loading indicator
     if (loadingIndicator) {
         loadingIndicator.style.display = 'none';
     }
-    
+
     isUpdatingCapacity = false;
 }
 
@@ -563,38 +568,59 @@ async function loadAdditionalFish(sortType, count) {
     try {
         // Get existing fish IDs to prevent duplicates
         const existingIds = new Set(fishes.map(f => f.docId).filter(id => id));
-        
+
         // Get additional fish, accounting for potential duplicates
         const additionalFishDocs = await getFishBySort(sortType, count * 2); // Get more to account for duplicates
-        
+
         let addedCount = 0;
-        
+
         for (const doc of additionalFishDocs) {
             // Stop if we've reached the capacity or added enough fish
             if (fishes.length >= maxTankCapacity || addedCount >= count) {
                 break;
             }
-            
-            const data = doc.data();
-            const imageUrl = data.image || data.Image;
-            
+
+            // Handle different possible backend API formats
+            let data, fishId;
+
+            if (typeof doc.data === 'function') {
+                // Firestore-style document with data() function
+                data = doc.data();
+                fishId = doc.id;
+            } else if (doc.data && typeof doc.data === 'object') {
+                // Backend returns {id: '...', data: {...}}
+                data = doc.data;
+                fishId = doc.id;
+            } else if (doc.id && (doc.image || doc.Image)) {
+                // Backend returns fish data directly as properties
+                data = doc;
+                fishId = doc.id;
+            } else {
+                // Unknown format, skip
+                continue;
+            }
+
+            // Skip if data is still undefined or null
+            if (!data) {
+                continue;
+            }
+
+            const imageUrl = data.image || data.Image; // Try lowercase first, then uppercase
+
             // Skip if invalid image or already exists
             if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.startsWith('http')) {
                 continue;
             }
-            
-            if (existingIds.has(doc.id)) {
+
+            if (existingIds.has(fishId)) {
                 continue;
             }
-            
-            // Add to existing IDs to prevent duplicates within this batch
-            existingIds.add(doc.id);
-            
+
             loadFishImageToTank(imageUrl, {
                 ...data,
-                docId: doc.id
+                docId: fishId
             });
-            
+
             addedCount++;
         }
     } catch (error) {
@@ -612,22 +638,22 @@ function animateFishDeath(fishIndex, onComplete) {
     const dyingFish = fishes[fishIndex];
     const deathDuration = 2000; // 2 seconds
     const startTime = Date.now();
-    
+
     // Store original values
     const originalDirection = dyingFish.direction;
     const originalY = dyingFish.y;
     const originalOpacity = 1;
-    
+
     // Death animation properties
     dyingFish.isDying = true;
     dyingFish.deathStartTime = startTime;
     dyingFish.deathDuration = deathDuration;
     dyingFish.originalY = originalY;
     dyingFish.opacity = originalOpacity;
-    
+
     // Set fish upside down
     dyingFish.direction = -Math.abs(dyingFish.direction); // Ensure it's negative (upside down)
-    
+
     // Animation will be handled in the main animation loop
     // After the animation completes, remove the fish
     setTimeout(() => {
@@ -646,7 +672,7 @@ function showNewFishNotification(artistName) {
     if (!notificationsToggle || !notificationsToggle.checked) {
         return;
     }
-    
+
     // Create retro notification element
     const notification = document.createElement('div');
     notification.textContent = `New fish from ${artistName}!`;
@@ -664,9 +690,9 @@ function showNewFishNotification(artistName) {
         z-index: 1000;
         pointer-events: none;
     `;
-    
+
     document.body.appendChild(notification);
-    
+
     // Remove after 3 seconds (no animation)
     setTimeout(() => {
         if (document.body.contains(notification)) {
@@ -689,27 +715,102 @@ async function loadInitialFish(sortType = 'recent') {
     try {
         // Load initial fish from Firestore using shared utility
         const allFishDocs = await getFishBySort(sortType, maxTankCapacity); // Load based on current capacity
-        
+
         // Track the newest timestamp for the listener
         if (allFishDocs.length > 0) {
-            const sortedByDate = allFishDocs.sort((a, b) => {
-                const aDate = a.data().CreatedAt || a.data().createdAt;
-                const bDate = b.data().CreatedAt || b.data().createdAt;
-                return bDate.toDate() - aDate.toDate();
+            const sortedByDate = allFishDocs.filter(doc => {
+                // Handle different possible backend API formats for filtering
+                let data;
+                if (typeof doc.data === 'function') {
+                    data = doc.data();
+                } else if (doc.data && typeof doc.data === 'object') {
+                    data = doc.data;
+                } else if (doc.id && (doc.image || doc.Image)) {
+                    data = doc;
+                } else {
+                    return false;
+                }
+                return data && (data.CreatedAt || data.createdAt);
+            }).sort((a, b) => {
+                // Handle backend response format - fish data may need extraction
+                let aData, bData;
+                if (typeof a.data === 'function') {
+                    aData = a.data();
+                } else if (a.data && typeof a.data === 'object') {
+                    aData = a.data;
+                } else {
+                    aData = a;
+                }
+
+                if (typeof b.data === 'function') {
+                    bData = b.data();
+                } else if (b.data && typeof b.data === 'object') {
+                    bData = b.data;
+                } else {
+                    bData = b;
+                }
+
+                const aDate = aData.CreatedAt || aData.createdAt;
+                const bDate = bData.CreatedAt || bData.createdAt;
+
+                // Handle both Date objects and ISO strings
+                const aTime = aDate instanceof Date ? aDate.getTime() : new Date(aDate).getTime();
+                const bTime = bDate instanceof Date ? bDate.getTime() : new Date(bDate).getTime();
+
+                return bTime - aTime;
             });
-            newestFishTimestamp = sortedByDate[0].data().CreatedAt || sortedByDate[0].data().createdAt;
+
+            if (sortedByDate.length > 0) {
+                const newestFish = sortedByDate[0];
+                let newestData;
+                if (typeof newestFish.data === 'function') {
+                    newestData = newestFish.data();
+                } else if (newestFish.data && typeof newestFish.data === 'object') {
+                    newestData = newestFish.data;
+                } else {
+                    newestData = newestFish;
+                }
+                newestFishTimestamp = newestData.CreatedAt || newestData.createdAt;
+            }
         }
 
         allFishDocs.forEach(doc => {
-            const data = doc.data();
-            const imageUrl = data.image || data.Image;
+
+            // Handle different possible backend API formats
+            let data, fishId;
+
+            if (typeof doc.data === 'function') {
+                // Firestore-style document with data() function
+                data = doc.data();
+                fishId = doc.id;
+            } else if (doc.data && typeof doc.data === 'object') {
+                // Backend returns {id: '...', data: {...}}
+                data = doc.data;
+                fishId = doc.id;
+            } else if (doc.id && (doc.image || doc.Image)) {
+                // Backend returns fish data directly as properties
+                data = doc;
+                fishId = doc.id;
+            } else {
+                // Unknown format
+                console.warn('Skipping fish with unknown format:', doc);
+                return;
+            }
+
+            // Skip if data is still undefined or null
+            if (!data) {
+                console.warn('Skipping fish with no data after extraction:', fishId, doc);
+                return;
+            }
+
+            const imageUrl = data.image || data.Image; // Try lowercase first, then uppercase
             if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.startsWith('http')) {
-                console.warn('Skipping fish with invalid image:', doc.id, data);
+                console.warn('Skipping fish with invalid image:', fishId, data);
                 return;
             }
             loadFishImageToTank(imageUrl, {
                 ...data,
-                docId: doc.id
+                docId: fishId
             });
         });
     } catch (error) {
@@ -742,92 +843,127 @@ function setupNewFishListener() {
     }, 30000); // Poll every 30 seconds
 }
 
-// Check for new fish using a single query instead of real-time listener
+// Check for new fish using backend API instead of real-time listener
 async function checkForNewFish() {
-    const baseQuery = window.db.collection('fishes_test')
-        .where('isVisible', '==', true)
-        .orderBy('CreatedAt', 'desc')
-        .limit(5); // Only check the 5 most recent fish
+    try {
+        // Build query parameters for backend API
+        const params = new URLSearchParams({
+            orderBy: 'CreatedAt',
+            order: 'desc',
+            limit: '5',
+            isVisible: 'true',
+            deleted: 'false'
+        });
 
-    // If we have a timestamp, only look for fish created after it
-    const query = newestFishTimestamp 
-        ? baseQuery.where('CreatedAt', '>', newestFishTimestamp)
-        : baseQuery;
+        const response = await fetch(`${BACKEND_URL}/api/fish?${params}`);
 
-    const snapshot = await query.get();
-    
-    snapshot.docs.forEach((doc) => {
-        const data = doc.data();
-        const imageUrl = data.image || data.Image;
-        
-        if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.startsWith('http')) {
-            console.warn('Skipping fish with invalid image:', doc.id, data);
-            return;
+        if (!response.ok) {
+            throw new Error(`Backend API failed: ${response.status}`);
         }
 
-        // Only add if we haven't seen this fish before
-        if (!fishes.some(f => f.docId === doc.id)) {
-            // Update newest timestamp
-            const fishDate = data.CreatedAt;
-            if (!newestFishTimestamp || (fishDate && fishDate.toDate() > newestFishTimestamp.toDate())) {
-                newestFishTimestamp = fishDate;
+        const data = await response.json();
+
+        data.data.forEach((fishItem) => {
+            // Handle different possible backend API formats
+            let fishData, fishId;
+
+            if (typeof fishItem.data === 'function') {
+                // Firestore-style document with data() function
+                fishData = fishItem.data();
+                fishId = fishItem.id;
+            } else if (fishItem.data && typeof fishItem.data === 'object') {
+                // Backend returns {id: '...', data: {...}}
+                fishData = fishItem.data;
+                fishId = fishItem.id;
+            } else if (fishItem.id && (fishItem.image || fishItem.Image)) {
+                // Backend returns fish data directly as properties
+                fishData = fishItem;
+                fishId = fishItem.id;
+            } else {
+                // Unknown format
+                console.warn('Skipping fish with unknown format in checkForNewFish:', fishItem);
+                return;
             }
-            
-            // If at capacity, animate death of oldest fish, then add new one
-            if (fishes.length >= maxTankCapacity) {
-                // Find the oldest fish by creation date (excluding dying fish)
-                const aliveFish = fishes.filter(f => !f.isDying);
-                let oldestFishIndex = -1;
-                let oldestDate = null;
-                
-                aliveFish.forEach((fish, index) => {
-                    const fishDate = fish.createdAt;
-                    if (!oldestDate) {
-                        // First fish or no previous date found
-                        oldestDate = fishDate;
-                        oldestFishIndex = fishes.indexOf(fish);
-                    } else if (!fishDate) {
-                        // Fish without creation date should be considered oldest
-                        oldestDate = null;
-                        oldestFishIndex = fishes.indexOf(fish);
-                    } else if (oldestDate && fishDate.toDate() < oldestDate.toDate()) {
-                        // Found an older fish
-                        oldestDate = fishDate;
-                        oldestFishIndex = fishes.indexOf(fish);
-                    }
-                });
-                
-                if (oldestFishIndex !== -1) {
-                    animateFishDeath(oldestFishIndex, () => {
-                        // After death animation completes, add new fish
-                        loadFishImageToTank(imageUrl, {
-                            ...data,
-                            docId: doc.id
-                        }, (newFish) => {
-                            // Show subtle notification
-                            showNewFishNotification(data.artist || data.Artist || 'Anonymous');
+
+            // Skip if data is still undefined or null
+            if (!fishData) {
+                console.warn('Skipping fish with no data in checkForNewFish:', fishId, fishItem);
+                return;
+            }
+
+            const imageUrl = fishData.image || fishData.Image; // Try lowercase first, then uppercase
+
+            if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.startsWith('http')) {
+                console.warn('Skipping fish with invalid image:', fishId, fishData);
+                return;
+            }
+
+            // Only add if we haven't seen this fish before
+            if (!fishes.some(f => f.docId === fishId)) {
+                // Update newest timestamp
+                const fishDate = fishData.CreatedAt || fishData.createdAt;
+                if (!newestFishTimestamp || (fishDate && new Date(fishDate) > new Date(newestFishTimestamp))) {
+                    newestFishTimestamp = fishDate;
+                }
+
+                // If at capacity, animate death of oldest fish, then add new one
+                if (fishes.length >= maxTankCapacity) {
+                    // Find the oldest fish by creation date (excluding dying fish)
+                    const aliveFish = fishes.filter(f => !f.isDying);
+                    let oldestFishIndex = -1;
+                    let oldestDate = null;
+
+                    aliveFish.forEach((fish, index) => {
+                        const fishDate = fish.createdAt;
+                        if (!oldestDate) {
+                            // First fish or no previous date found
+                            oldestDate = fishDate;
+                            oldestFishIndex = fishes.indexOf(fish);
+                        } else if (!fishDate) {
+                            // Fish without creation date should be considered oldest
+                            oldestDate = null;
+                            oldestFishIndex = fishes.indexOf(fish);
+                        } else if (oldestDate && new Date(fishDate) < new Date(oldestDate)) {
+                            // Found an older fish
+                            oldestDate = fishDate;
+                            oldestFishIndex = fishes.indexOf(fish);
+                        }
+                    });
+
+                    if (oldestFishIndex !== -1) {
+                        animateFishDeath(oldestFishIndex, () => {
+                            // After death animation completes, add new fish
+                            loadFishImageToTank(imageUrl, {
+                                ...fishData,
+                                docId: fishId
+                            }, (newFish) => {
+                                // Show subtle notification
+                                showNewFishNotification(fishData.Artist || fishData.artist || 'Anonymous');
+                            });
                         });
+                    }
+                } else {
+                    // Tank not at capacity, add fish immediately
+                    loadFishImageToTank(imageUrl, {
+                        ...fishData,
+                        docId: fishId
+                    }, (newFish) => {
+                        // Show subtle notification
+                        showNewFishNotification(fishData.Artist || fishData.artist || 'Anonymous');
                     });
                 }
-            } else {
-                // Tank not at capacity, add fish immediately
-                loadFishImageToTank(imageUrl, {
-                    ...data,
-                    docId: doc.id
-                }, (newFish) => {
-                    // Show subtle notification
-                    showNewFishNotification(data.artist || data.Artist || 'Anonymous');
-                });
             }
-        }
-    });
+        });
+    } catch (error) {
+        console.error('Error checking for new fish:', error);
+    }
 }
 
 // Combined function to load tank with streaming capability
 async function loadFishIntoTank(sortType = 'recent') {
     // Load initial fish
     await loadInitialFish(sortType);
-    
+
     // Set up real-time listener for new fish (only for recent mode)
     if (sortType === 'recent') {
         setupNewFishListener();
@@ -849,7 +985,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         initialSort = sortParam;
         sortSelect.value = sortParam;
     }
-    
+
     // Initialize capacity from URL parameter
     if (capacityParam) {
         const capacity = parseInt(capacityParam);
@@ -868,18 +1004,18 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Handle sort change
     sortSelect.addEventListener('change', () => {
         const selectedSort = sortSelect.value;
-        
+
         // Clean up existing listener before switching modes
         if (newFishListener) {
-            newFishListener();
+            clearInterval(newFishListener);
             newFishListener = null;
         }
-        
+
         loadFishIntoTank(selectedSort);
 
         // Update page title based on selection
         updatePageTitle(selectedSort);
-        
+
         // Update URL without reloading the page
         const newUrl = new URL(window.location);
         newUrl.searchParams.set('sort', selectedSort);
@@ -899,27 +1035,27 @@ window.addEventListener('DOMContentLoaded', async () => {
         const debouncedUpdateCapacity = debounce((newCapacity) => {
             updateTankCapacity(newCapacity);
         }, 300); // 300ms delay
-        
+
         // Update display immediately but debounce the actual capacity change
         fishCountSlider.addEventListener('input', (e) => {
             const newCapacity = parseInt(e.target.value);
-            
+
             // Update display immediately
             const displayElement = document.getElementById('fish-count-display');
             if (displayElement) {
                 displayElement.textContent = newCapacity;
             }
-            
+
             // Debounce the actual fish loading
             debouncedUpdateCapacity(newCapacity);
         });
-        
+
         // Also handle the change event for when user stops dragging
         fishCountSlider.addEventListener('change', (e) => {
             const newCapacity = parseInt(e.target.value);
             updateTankCapacity(newCapacity);
         });
-        
+
         // Initialize the display
         updateTankCapacity(maxTankCapacity);
     }
@@ -930,7 +1066,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Clean up listener when page is unloaded
     window.addEventListener('beforeunload', () => {
         if (newFishListener) {
-            newFishListener();
+            clearInterval(newFishListener);
             newFishListener = null;
         }
     });
@@ -948,26 +1084,26 @@ function showFishInfoModal(fish) {
     const modalHeight = Math.min(80, fish.height);
 
     let info = `<div style='text-align:center;'>`;
-    
+
     // Add highlighting if this is the user's fish
     const isCurrentUserFish = isUserFish(fish);
     if (isCurrentUserFish) {
         info += `<div style='margin-bottom: 10px; padding: 8px; background: linear-gradient(135deg, #fff9e6, #fff3d0); border: 2px solid #ffd700; border-radius: 6px; color: #333; font-weight: bold; font-size: 12px; box-shadow: 0 2px 6px rgba(255,215,0,0.3);'>Your Fish</div>`;
     }
-    
+
     info += `<img src='${imgDataUrl}' width='${modalWidth}' height='${modalHeight}' style='display:block;margin:0 auto 10px auto;border:1px solid #808080;background:#ffffff;' alt='Fish'><br>`;
     info += `<div style='margin-bottom:10px;'>`;
-    
+
     // Make artist name a clickable link to their profile if userId exists
     const artistName = fish.artist || 'Anonymous';
     const userId = fish.userId;
-    
+
     if (userId) {
         info += `<strong>Artist:</strong> <a href="profile.html?userId=${encodeURIComponent(userId)}" target="_blank" style="color: #0000EE; text-decoration: underline;">${escapeHtml(artistName)}</a><br>`;
     } else {
         info += `<strong>Artist:</strong> ${escapeHtml(artistName)}<br>`;
     }
-    
+
     if (fish.createdAt) {
         info += `<strong>Created:</strong> ${formatDate(fish.createdAt)}<br>`;
     }
@@ -977,7 +1113,7 @@ function showFishInfoModal(fish) {
 
     // Add voting controls using shared utility
     info += createVotingControlsHTML(fish.docId, fish.upvotes || 0, fish.downvotes || 0, false, 'modal-controls');
-    
+
     // Add "Add to Tank" button only if user is logged in
     const userToken = localStorage.getItem('userToken');
     if (userToken) {
@@ -985,7 +1121,7 @@ function showFishInfoModal(fish) {
         info += `<button onclick="showAddToTankModal('${fish.docId}')" style="border: 1px solid #000; padding: 4px 8px; cursor: pointer;">Add to Tank</button>`;
         info += `</div>`;
     }
-    
+
     info += `</div>`;
 
     showModal(info, () => { });
@@ -1046,7 +1182,7 @@ function showModal(html, onClose) {
     modal.style.alignItems = 'center';
     modal.style.justifyContent = 'center';
     modal.style.zIndex = '1000';
-    
+
     const modalContent = document.createElement('div');
     modalContent.className = 'modal-content';
     modalContent.style.background = 'white';
@@ -1060,9 +1196,9 @@ function showModal(html, onClose) {
     modalContent.style.boxShadow = '0 4px 20px rgba(0,0,0,0.3)';
     modalContent.style.overflow = 'auto';
     modalContent.innerHTML = html;
-    
+
     modal.appendChild(modalContent);
-    
+
     function close() {
         document.body.removeChild(modal);
         if (onClose) onClose();
@@ -1084,17 +1220,17 @@ function handleTankTap(e) {
         tapX = e.clientX - rect.left;
         tapY = e.clientY - rect.top;
     }
-    
+
     // Check if this is a feeding action (right click, or shift+click, or double tap)
     const isFeeding = e.button === 2 || e.shiftKey || e.ctrlKey || e.metaKey;
-    
+
     if (isFeeding) {
         // Drop food pellets
         dropFoodPellet(tapX, tapY);
         e.preventDefault(); // Prevent context menu on right click
         return;
     }
-    
+
     // Original scare behavior
     const radius = 120;
     fishes.forEach(fish => {
@@ -1116,7 +1252,7 @@ function handleTankTap(e) {
 function handleFishTap(e) {
     let rect = swimCanvas.getBoundingClientRect();
     let tapX, tapY;
-    
+
     // Handle different event types
     if (e.touches && e.touches.length > 0) {
         // Touch event with active touches
@@ -1131,16 +1267,16 @@ function handleFishTap(e) {
         tapX = e.clientX - rect.left;
         tapY = e.clientY - rect.top;
     }
-        
+
     // Check if tap hit any fish (iterate from top to bottom)
     for (let i = fishes.length - 1; i >= 0; i--) {
         const fish = fishes[i];
-        
+
         // Calculate fish position including any swimming animation
         const time = Date.now() / 500;
         const fishX = fish.x;
         let fishY = fish.y;
-        
+
         // Account for swimming animation unless fish is dying
         if (!fish.isDying) {
             const foodDetectionData = foodDetectionCache.get(fish.docId || `fish_${i}`);
@@ -1148,7 +1284,7 @@ function handleFishTap(e) {
             const currentAmplitude = hasNearbyFood ? fish.amplitude * 0.3 : fish.amplitude;
             fishY = fish.y + Math.sin(time + fish.phase) * currentAmplitude;
         }
-                
+
         // Check if tap is within fish bounds
         if (
             tapX >= fishX && tapX <= fishX + fish.width &&
@@ -1158,7 +1294,7 @@ function handleFishTap(e) {
             return; // Found a fish, don't handle tank tap
         }
     }
-    
+
     // No fish was hit, handle tank tap
     handleTankTap(e);
 }
@@ -1194,27 +1330,27 @@ swimCanvas.addEventListener('touchend', (e) => {
     const rect = swimCanvas.getBoundingClientRect();
     const tapX = e.changedTouches[0].clientX - rect.left;
     const tapY = e.changedTouches[0].clientY - rect.top;
-    
+
     // Debug logging for mobile touch issues
-    
+
     // Check if finger moved significantly during touch
     const moveDistance = Math.sqrt(
-        Math.pow(tapX - touchStartPos.x, 2) + 
+        Math.pow(tapX - touchStartPos.x, 2) +
         Math.pow(tapY - touchStartPos.y, 2)
     );
-    
+
     // Long press for feeding (500ms+ and minimal movement)
     if (touchDuration >= 500 && moveDistance < 20) {
         dropFoodPellet(tapX, tapY);
         return;
     }
-    
+
     // Double tap for feeding
     if (currentTime - lastTapTime < 300 && moveDistance < 20) { // Double tap within 300ms
         dropFoodPellet(tapX, tapY);
         return;
     }
-    
+
     // Single tap - check for fish interaction first, then handle tank tap
     // Create a mock event for handleFishTap with correct coordinates
     const mockEvent = {
@@ -1222,9 +1358,9 @@ swimCanvas.addEventListener('touchend', (e) => {
         clientY: rect.top + tapY,
         touches: null // Indicate this is from touch end
     };
-    
+
     handleFishTap(mockEvent);
-    
+
     lastTapTime = currentTime;
 });
 
@@ -1270,31 +1406,31 @@ let cacheUpdateCounter = 0;
 function animateFishes() {
     swimCtx.clearRect(0, 0, swimCanvas.width, swimCanvas.height);
     const time = Date.now() / 500;
-    
+
     // Update fish count display occasionally
     if (Math.floor(time) % 2 === 0) { // Every 2 seconds
         updateCurrentFishCount();
     }
-    
+
     // Update food pellets
     updateFoodPellets();
-    
+
     // Clear food detection cache every few frames to prevent stale data
     cacheUpdateCounter++;
     if (cacheUpdateCounter % 5 === 0) {
         foodDetectionCache.clear();
     }
-    
+
     for (const fish of fishes) {
         // Handle entrance animation
         if (fish.isEntering) {
             const elapsed = Date.now() - fish.enterStartTime;
             const progress = Math.min(elapsed / fish.enterDuration, 1);
-            
+
             // Fade in and scale up
             fish.opacity = progress;
             fish.scale = 0.3 + (progress * 0.7); // Scale from 0.3 to 1.0
-            
+
             // Remove entrance flag when done
             if (progress >= 1) {
                 fish.isEntering = false;
@@ -1302,51 +1438,51 @@ function animateFishes() {
                 fish.scale = 1;
             }
         }
-        
+
         // Handle death animation
         if (fish.isDying) {
             const elapsed = Date.now() - fish.deathStartTime;
             const progress = Math.min(elapsed / fish.deathDuration, 1);
-            
+
             // Fade out
             fish.opacity = 1 - progress;
-            
+
             // Fall down
             fish.y = fish.originalY + (progress * progress * 200); // Accelerating fall
-            
+
             // Slow down horizontal movement
             fish.speed = fish.speed * (1 - progress * 0.5);
         } else if (!fish.isEntering) {
             // Normal fish behavior (only if not entering)
-            
+
             // Use cached food detection to improve performance
             const fishId = fish.docId || `fish_${fishes.indexOf(fish)}`;
             let foodDetectionData = foodDetectionCache.get(fishId);
-            
+
             if (!foodDetectionData) {
                 // Calculate food detection data and cache it
                 const fishCenterX = fish.x + fish.width / 2;
                 const fishCenterY = fish.y + fish.height / 2;
-                
+
                 let nearestFood = null;
                 let nearestDistance = FOOD_DETECTION_RADIUS;
                 let hasNearbyFood = false;
-                
+
                 // Optimize: Only check active food pellets
                 const activePellets = foodPellets.filter(p => !p.consumed);
-                
+
                 // Find nearest food pellet using more efficient distance calculation
                 for (const pellet of activePellets) {
                     const dx = pellet.x - fishCenterX;
                     const dy = pellet.y - fishCenterY;
-                    
+
                     // Use squared distance for initial comparison (more efficient)
                     const distanceSquared = dx * dx + dy * dy;
                     const radiusSquared = FOOD_DETECTION_RADIUS * FOOD_DETECTION_RADIUS;
-                    
+
                     if (distanceSquared < radiusSquared) {
                         hasNearbyFood = true;
-                        
+
                         // Only calculate actual distance if within radius
                         const distance = Math.sqrt(distanceSquared);
                         if (distance < nearestDistance) {
@@ -1355,7 +1491,7 @@ function animateFishes() {
                         }
                     }
                 }
-                
+
                 foodDetectionData = {
                     nearestFood,
                     nearestDistance,
@@ -1363,46 +1499,46 @@ function animateFishes() {
                     fishCenterX,
                     fishCenterY
                 };
-                
+
                 foodDetectionCache.set(fishId, foodDetectionData);
             }
-            
+
             // Initialize velocity if not set
             if (!fish.vx) fish.vx = 0;
             if (!fish.vy) fish.vy = 0;
-            
+
             // Always apply base swimming movement
             fish.vx += fish.speed * fish.direction * 0.1; // Continuous base movement
-            
+
             // Apply food attraction using cached data
             if (foodDetectionData.nearestFood) {
                 const dx = foodDetectionData.nearestFood.x - foodDetectionData.fishCenterX;
                 const dy = foodDetectionData.nearestFood.y - foodDetectionData.fishCenterY;
                 const distance = foodDetectionData.nearestDistance;
-                
+
                 if (distance > 0) {
                     // Calculate attraction force (stronger when closer, with smooth falloff)
                     const distanceRatio = distance / FOOD_DETECTION_RADIUS;
                     const attractionStrength = FOOD_ATTRACTION_FORCE * (1 - distanceRatio * distanceRatio);
-                    
+
                     // Apply force towards food more gently
                     fish.vx += (dx / distance) * attractionStrength;
                     fish.vy += (dy / distance) * attractionStrength;
-                    
+
                     // Update fish direction to face the food (but not too abruptly)
                     if (Math.abs(dx) > 10) { // Only change direction if food is significantly left/right
                         fish.direction = dx > 0 ? 1 : -1;
                     }
                 }
             }
-            
+
             // Always move based on velocity
             fish.x += fish.vx;
             fish.y += fish.vy;
-            
+
             // Handle edge collisions BEFORE applying friction
             let hitEdge = false;
-            
+
             // Left and right edges
             if (fish.x <= 0) {
                 fish.x = 0;
@@ -1415,7 +1551,7 @@ function animateFishes() {
                 fish.vx = -Math.abs(fish.vx); // Ensure velocity points left
                 hitEdge = true;
             }
-            
+
             // Top and bottom edges
             if (fish.y <= 0) {
                 fish.y = 0;
@@ -1426,12 +1562,12 @@ function animateFishes() {
                 fish.vy = -Math.abs(fish.vy) * 0.5; // Bounce off bottom, but gently
                 hitEdge = true;
             }
-            
+
             // Apply friction - less when attracted to food
             const frictionFactor = foodDetectionData.hasNearbyFood ? 0.88 : 0.85;
             fish.vx *= frictionFactor;
             fish.vy *= frictionFactor;
-            
+
             // Limit velocity to prevent fish from moving too fast
             const maxVel = fish.speed * 2;
             const velMag = Math.sqrt(fish.vx * fish.vx + fish.vy * fish.vy);
@@ -1439,12 +1575,12 @@ function animateFishes() {
                 fish.vx = (fish.vx / velMag) * maxVel;
                 fish.vy = (fish.vy / velMag) * maxVel;
             }
-            
+
             // Ensure minimum movement to prevent complete stops
             if (Math.abs(fish.vx) < 0.1) {
                 fish.vx = fish.speed * fish.direction * 0.1;
             }
-            
+
             // If fish hit an edge, give it a small push away from the edge
             if (hitEdge) {
                 fish.vx += fish.speed * fish.direction * 0.2;
@@ -1452,7 +1588,7 @@ function animateFishes() {
                 fish.vy += (Math.random() - 0.5) * 0.3;
             }
         }
-        
+
         // Calculate swim position - reduce sine wave when fish is attracted to food
         let swimY;
         if (fish.isDying) {
@@ -1462,24 +1598,24 @@ function animateFishes() {
             const fishId = fish.docId || `fish_${fishes.indexOf(fish)}`;
             const foodDetectionData = foodDetectionCache.get(fishId);
             const hasNearbyFood = foodDetectionData ? foodDetectionData.hasNearbyFood : false;
-            
+
             // Reduce sine wave amplitude when attracted to food for more realistic movement
             const currentAmplitude = hasNearbyFood ? fish.amplitude * 0.3 : fish.amplitude;
             swimY = fish.y + Math.sin(time + fish.phase) * currentAmplitude;
         }
-        
+
         drawWigglingFish(fish, fish.x, swimY, fish.direction, time, fish.phase);
     }
-    
+
     // Render food pellets
     renderFoodPellets();
-    
+
     // Render food consumption effects
     renderFoodEffects();
-    
+
     // Render feeding effects
     renderFeedingEffects();
-    
+
     requestAnimationFrame(animateFishes);
 }
 
@@ -1488,14 +1624,14 @@ function drawWigglingFish(fish, x, y, direction, time, phase) {
     const w = fish.width;
     const h = fish.height;
     const tailEnd = Math.floor(w * fish.peduncle);
-    
+
     // Check if this is the current user's fish
     const isCurrentUserFish = isUserFish(fish);
-    
+
     // Add highlighting effect for user's fish
     if (isCurrentUserFish && !fish.isDying) {
         swimCtx.save();
-        
+
         // Draw explosive lines radiating from the fish
         const centerX = x + w / 2;
         const centerY = y + h / 2;
@@ -1503,47 +1639,47 @@ function drawWigglingFish(fish, x, y, direction, time, phase) {
         const lineCount = 12;
         const lineLength = 15;
         const timeOffset = time * 0.002; // Slow rotation
-        
+
         swimCtx.strokeStyle = 'rgba(255, 215, 0, 0.8)'; // Bright gold
         swimCtx.lineWidth = 2;
         swimCtx.lineCap = 'round';
-        
+
         // Draw radiating lines with slight animation
         for (let i = 0; i < lineCount; i++) {
             const angle = (i / lineCount) * Math.PI * 2 + timeOffset;
             const startRadius = maxRadius + 5;
             const endRadius = startRadius + lineLength;
-            
+
             // Add some variation to line lengths
             const lengthVariation = Math.sin(angle * 3 + timeOffset * 2) * 3;
             const actualEndRadius = endRadius + lengthVariation;
-            
+
             const startX = centerX + Math.cos(angle) * startRadius;
             const startY = centerY + Math.sin(angle) * startRadius;
             const endX = centerX + Math.cos(angle) * actualEndRadius;
             const endY = centerY + Math.sin(angle) * actualEndRadius;
-            
+
             // Fade out lines at the edges
             const fadeAlpha = 0.8 - (i % 3) * 0.2;
             swimCtx.strokeStyle = `rgba(255, 215, 0, ${fadeAlpha})`;
-            
+
             swimCtx.beginPath();
             swimCtx.moveTo(startX, startY);
             swimCtx.lineTo(endX, endY);
             swimCtx.stroke();
         }
-        
+
         swimCtx.restore();
     }
-    
+
     // Set opacity for dying or entering fish
     if ((fish.isDying || fish.isEntering) && fish.opacity !== undefined) {
         swimCtx.globalAlpha = fish.opacity;
     }
-    
+
     // Calculate scale for entering fish
     const scale = fish.scale || 1;
-    
+
     for (let i = 0; i < w; i++) {
         let isTail, t, wiggle, drawCol, drawX;
         if (direction === 1) {
@@ -1561,24 +1697,26 @@ function drawWigglingFish(fish, x, y, direction, time, phase) {
         }
         swimCtx.save();
         swimCtx.translate(drawX, y);
-        
+
         // Apply scale for entering fish
         if (fish.isEntering && scale !== 1) {
             swimCtx.scale(scale, scale);
         }
-        
+
         // Flip upside down for dying fish
         if (fish.isDying) {
             swimCtx.scale(1, -1);
         }
-        
+
         swimCtx.drawImage(src, drawCol, 0, 1, h, 0, 0, 1, h);
         swimCtx.restore();
     }
-    
+
     // Reset opacity
     if ((fish.isDying || fish.isEntering) && fish.opacity !== undefined) {
         swimCtx.globalAlpha = 1;
     }
 }
+
+// Continue the animation loop
 requestAnimationFrame(animateFishes);

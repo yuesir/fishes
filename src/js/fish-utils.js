@@ -15,9 +15,9 @@ function escapeHtml(unsafe) {
 }
 
 // Configuration for backend URL - automatically detects environment with URL override support
-const isLocalhost = window.location.hostname === 'localhost' || 
-                   window.location.hostname === '127.0.0.1' ||
-                   window.location.hostname.includes('localhost');
+const isLocalhost = window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.hostname.includes('localhost');
 
 // Check for URL parameter override (useful for testing)
 const urlParams = new URLSearchParams(window.location.search);
@@ -233,247 +233,136 @@ function generateRandomDocId() {
     return result;
 }
 
-// Get random documents using efficient Firestore random selection
+// Get random documents using backend API
 async function getRandomFish(limit = 25, userId = null) {
-    const randomDocs = [];
-
-    while (randomDocs.length < limit) {
-        const randomId = generateRandomDocId();
-
-        // Try forward direction first
-        let query = window.db.collection('fishes_test')
-            .where(window.firebase.firestore.FieldPath.documentId(), '>=', randomId)
-            .where('isVisible', '==', true);
-            
-        // Add user filter if specified
-        if (userId) {
-            query = query.where('userId', '==', userId);
-        }
-        
-        query = query.orderBy(window.firebase.firestore.FieldPath.documentId())
-            .limit(limit - randomDocs.length);
-
-        let snapshot = await query.get();
-
-        // If no results, try backward direction (wrap-around)
-        if (snapshot.empty) {
-            query = window.db.collection('fishes_test')
-                .where(window.firebase.firestore.FieldPath.documentId(), '<', randomId)
-                .where('isVisible', '==', true);
-                
-            // Add user filter if specified
-            if (userId) {
-                query = query.where('userId', '==', userId);
-            }
-            
-            query = query.orderBy(window.firebase.firestore.FieldPath.documentId())
-                .limit(limit - randomDocs.length);
-
-            snapshot = await query.get();
-        }
-
-        // Add new documents (avoid duplicates)
-        const existingIds = new Set(randomDocs.map(doc => doc.id));
-        snapshot.docs.forEach(doc => {
-            if (!existingIds.has(doc.id) && randomDocs.length < limit) {
-                randomDocs.push(doc);
-            }
+    try {
+        // Use the backend API with random parameter
+        const params = new URLSearchParams({
+            limit: limit.toString(),
+            orderBy: 'CreatedAt',
+            random: 'true',
+            isVisible: 'true',
+            deleted: 'false'
         });
 
-        // Safety break to avoid infinite loop
-        if (snapshot.empty || snapshot.docs.length === 0) {
-            console.warn('No more documents available for random selection');
-            break;
-        }
-    }
-
-    return randomDocs;
-}
-
-// Cache fish data to reduce redundant Firestore reads
-const fishDataCache = new Map(); // key: sortType_limit_userId, value: {data, timestamp}
-const cacheExpiryTime = 30 * 60 * 1000; // 30 minutes - significantly longer cache for cost reduction
-
-// Separate cache for different types of data with different expiry times
-const imageCacheTime = 60 * 60 * 1000; // 1 hour for image validation
-const staticDataCacheTime = 2 * 60 * 60 * 1000; // 2 hours for relatively static data like recent fish
-
-// Debounce mechanism to prevent rapid successive calls
-const pendingRequests = new Map(); // key: cacheKey, value: Promise
-
-// Check if cached data is still valid with different expiry times for different data types
-function isCacheValid(cacheEntry, sortType = 'default') {
-    if (!cacheEntry) return false;
-    
-    let expiryTime = cacheExpiryTime; // Default 30 minutes
-    
-    // Use longer cache times for less frequently changing data
-    if (sortType === 'hot' || sortType === 'score' || sortType === 'popular') {
-        expiryTime = staticDataCacheTime; // 2 hours for ranking data
-    } else if (sortType === 'recent' || sortType === 'date') {
-        expiryTime = cacheExpiryTime; // 30 minutes for recent data
-    }
-    
-    return (Date.now() - cacheEntry.timestamp) < expiryTime;
-}
-
-// Generate cache key for fish queries
-function generateCacheKey(sortType, limit, userId, startAfter) {
-    const key = `${sortType}_${limit}_${userId || 'all'}`;
-    // Don't cache paginated queries to avoid complexity
-    return startAfter ? null : key;
-}
-
-// Get fish from Firestore with different sorting options (unified function for both tank and rank)
-async function getFishBySort(sortType, limit = 25, startAfter = null, direction = 'desc', userId = null) {
-    // Check cache first (only for non-paginated queries)
-    const cacheKey = generateCacheKey(sortType, limit, userId, startAfter);
-    if (cacheKey) {
-        const cached = fishDataCache.get(cacheKey);
-        if (isCacheValid(cached, sortType)) {
-            console.log(`Using cached fish data for ${cacheKey} (cache hit saves Firestore read)`);
-            return cached.data;
-        }
-
-        // Check if there's already a pending request for this data
-        if (pendingRequests.has(cacheKey)) {
-            console.log(`Reusing pending request for ${cacheKey} (prevents duplicate reads)`);
-            return await pendingRequests.get(cacheKey);
-        }
-    }
-
-    // Create the actual query promise
-    const queryPromise = async () => {
-        let query = window.db.collection('fishes_test');
-
-        // Filter out flagged and deleted fish
-        query = query.where('isVisible', '==', true);
-        
-        // Filter by user if specified
         if (userId) {
-            query = query.where('userId', '==', userId);
+            params.append('userId', userId);
         }
 
+        const response = await fetch(`${BACKEND_URL}/api/fish?${params}`);
+
+        if (!response.ok) {
+            throw new Error(`Backend API failed: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Convert backend response to Firestore-like documents
+        return data.data.map(fishItem => ({
+            id: fishItem.id,
+            data: () => fishItem.data
+        }));
+    } catch (error) {
+        console.error('Error fetching random fish from backend:', error);
+        throw error;
+    }
+}
+
+
+
+// Get fish from backend API with caching
+async function getFishBySort(sortType, limit = 25, startAfter = null, direction = 'desc', userId = null) {
+    // Create the backend API request
+    const queryPromise = async () => {
+        // Build query parameters to match your backend API
+        const params = new URLSearchParams({
+            limit: limit.toString(),
+            order: direction,
+            isVisible: 'true',
+            deleted: 'false'
+        });
+
+        // Map sortType to orderBy field
         switch (sortType) {
             case 'hot':
-                query = query.orderBy("hotScore", direction);
-                if (startAfter) {
-                    query = query.startAfter(startAfter);
-                }
-                query = query.limit(limit);
+                params.append('orderBy', 'hotScore');
                 break;
             case 'score':
             case 'popular':
-                query = query.orderBy("score", direction);
-                if (startAfter) {
-                    query = query.startAfter(startAfter);
-                }
-                query = query.limit(limit);
+                params.append('orderBy', 'score');
                 break;
-
             case 'date':
             case 'recent':
-                query = query.orderBy("CreatedAt", direction);
-                if (startAfter) {
-                    query = query.startAfter(startAfter);
-                }
-                query = query.limit(limit);
+                params.append('orderBy', 'CreatedAt');
                 break;
-
             case 'random':
-                // For random, we can't use pagination in the traditional sense
-                return await getRandomFish(limit, userId);
-
+                // For random, we'll need to handle this differently
+                // Your backend might need a special random endpoint or parameter
+                params.append('orderBy', 'CreatedAt');
+                params.append('random', 'true');
+                break;
             default:
-                // Default to most recent
-                query = query.orderBy("CreatedAt", direction);
-                if (startAfter) {
-                    query = query.startAfter(startAfter);
-                }
-                query = query.limit(limit);
+                params.append('orderBy', 'CreatedAt');
         }
 
-        const snapshot = await query.get();
-        
-        // Cache the results (only for non-paginated queries)
-        if (cacheKey) {
-            fishDataCache.set(cacheKey, {
-                data: snapshot.docs,
-                timestamp: Date.now()
-            });
-            console.log(`Cached fish data for ${cacheKey} (${snapshot.docs.length} documents)`);
+        if (userId) {
+            params.append('userId', userId);
         }
-        
-        return snapshot.docs;
+
+        if (startAfter) {
+            // For pagination, pass the last document ID
+            params.append('startAfter', startAfter.id || startAfter);
+        }
+
+        const response = await fetch(`${BACKEND_URL}/api/fish?${params}`);
+
+        if (!response.ok) {
+            throw new Error(`Backend API failed: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Convert backend response to Firestore-like documents
+        const docs = data.data.map(fishItem => ({
+            id: fishItem.id,
+            data: () => fishItem.data || fishItem  // Handle both {id, data} and direct fish object formats
+        }));
+
+        return docs;
     };
 
-    // Store the promise in pending requests to prevent duplicates
-    if (cacheKey) {
-        pendingRequests.set(cacheKey, queryPromise());
-        try {
-            const result = await pendingRequests.get(cacheKey);
-            pendingRequests.delete(cacheKey);
-            return result;
-        } catch (error) {
-            pendingRequests.delete(cacheKey);
-            throw error;
-        }
-    } else {
-        // For paginated queries, just execute directly
-        return await queryPromise();
-    }
-}
+    return await queryPromise();
 
-// Clean up expired cache entries to prevent memory leaks
-function cleanupExpiredCache() {
-    const now = Date.now();
-    for (const [key, entry] of fishDataCache.entries()) {
-        if (!isCacheValid(entry)) {
-            fishDataCache.delete(key);
-        }
-    }
-    
-    // Also cleanup image validation cache
-    for (const [url, entry] of imageValidationCache.entries()) {
-        if ((now - entry.timestamp) > imageCacheTime) {
-            imageValidationCache.delete(url);
-        }
-    }
-    
-    console.log(`Cache cleanup: ${fishDataCache.size} fish entries, ${imageValidationCache.size} image entries remaining`);
 }
-
-// Run cache cleanup every 30 minutes
-setInterval(cleanupExpiredCache, 30 * 60 * 1000);
 
 // Convert fish image to data URL for display
 function createFishImageDataUrl(imgUrl, callback) {
     const img = new Image();
     img.crossOrigin = 'anonymous';
-    img.onload = function() {
+    img.onload = function () {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
-        
+
         // Set canvas size
         canvas.width = 120;
         canvas.height = 80;
-        
+
         // Calculate scaling to fit within canvas while maintaining aspect ratio
         const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
         const scaledWidth = img.width * scale;
         const scaledHeight = img.height * scale;
-        
+
         // Center the image
         const x = (canvas.width - scaledWidth) / 2;
         const y = (canvas.height - scaledHeight) / 2;
-        
+
         // Clear canvas and draw image
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
-        
+
         callback(canvas.toDataURL());
     };
-    img.onerror = function() {
+    img.onerror = function () {
         callback(null);
     };
     img.src = imgUrl;
@@ -494,14 +383,14 @@ function getCurrentUser() {
 function redirectToLogin(currentPage = null) {
     // Store current page for redirect after login
     const redirectUrl = currentPage || window.location.href;
-    
+
     // Use URL parameter for immediate redirect, and localStorage as backup
     const loginUrl = new URL('/login.html', window.location.origin);
     loginUrl.searchParams.set('redirect', encodeURIComponent(redirectUrl));
-    
+
     // Also store in localStorage as backup
     localStorage.setItem('loginRedirect', redirectUrl);
-    
+
     // Redirect to login page
     window.location.href = loginUrl.toString();
 }
@@ -530,7 +419,7 @@ function requireAuthentication(redirectToCurrentPage = true) {
 function updateAuthenticationUI() {
     const isLoggedIn = isUserLoggedIn();
     const currentUser = getCurrentUser();
-    
+
     // Update "my tanks" link visibility
     const myTanksLink = document.getElementById('my-tanks-link');
     if (myTanksLink) {
@@ -550,10 +439,10 @@ function updateAuthenticationUI() {
             authLink.textContent = 'Login';
             authLink.href = '/login.html';
             authLink.onclick = null;
-    
+
         }
     }
-    
+
     // Update auth status if present
     const authStatus = document.getElementById('auth-status');
     if (authStatus) {
@@ -577,14 +466,14 @@ function getDisplayName(profile) {
 async function getUserProfile(userId) {
     try {
         const response = await fetch(`${BACKEND_URL}/api/profile/${encodeURIComponent(userId)}`);
-        
+
         if (!response.ok) {
             if (response.status === 404) {
                 throw new Error('User not found');
             }
             throw new Error(`Failed to fetch profile: ${response.status}`);
         }
-        
+
         const data = await response.json();
         return data.profile;
     } catch (error) {
@@ -597,9 +486,9 @@ async function getUserProfile(userId) {
 function initializeAuthNavigation() {
     // Update UI on page load
     document.addEventListener('DOMContentLoaded', updateAuthenticationUI);
-    
+
     // Also check when localStorage changes (for cross-tab login/logout)
-    window.addEventListener('storage', function(e) {
+    window.addEventListener('storage', function (e) {
         if (e.key === 'userToken' || e.key === 'userData') {
             updateAuthenticationUI();
         }
@@ -610,7 +499,7 @@ function initializeAuthNavigation() {
 function getCurrentUserId() {
     const userData = localStorage.getItem('userData');
     const userIdFromStorage = localStorage.getItem('userId');
-    
+
     if (userData) {
         try {
             const parsed = JSON.parse(userData);
@@ -619,7 +508,7 @@ function getCurrentUserId() {
             return userIdFromStorage;
         }
     }
-    
+
     return userIdFromStorage;
 }
 
