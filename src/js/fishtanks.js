@@ -768,7 +768,7 @@ async function loadAvailableFish() {
     
     try {
         // Use the same fish loading logic as the ranking system
-        const fishDocs = await getFishBySort('recent', 50);
+        const fishDocs = await getFishBySort('recent', 25); // Reduced from 50 to 25
         
         // Convert Firestore documents to fish objects
         userFish = fishDocs.map(doc => {

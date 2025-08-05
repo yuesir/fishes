@@ -234,7 +234,7 @@ function generateRandomDocId() {
 }
 
 // Get random documents using efficient Firestore random selection
-async function getRandomFish(limit = 50, userId = null) {
+async function getRandomFish(limit = 25, userId = null) {
     const randomDocs = [];
 
     while (randomDocs.length < limit) {
@@ -290,60 +290,161 @@ async function getRandomFish(limit = 50, userId = null) {
     return randomDocs;
 }
 
-// Get fish from Firestore with different sorting options (unified function for both tank and rank)
-async function getFishBySort(sortType, limit = 50, startAfter = null, direction = 'desc', userId = null) {
-    let query = window.db.collection('fishes_test');
+// Cache fish data to reduce redundant Firestore reads
+const fishDataCache = new Map(); // key: sortType_limit_userId, value: {data, timestamp}
+const cacheExpiryTime = 30 * 60 * 1000; // 30 minutes - significantly longer cache for cost reduction
 
-    // Filter out flagged and deleted fish
-    query = query.where('isVisible', '==', true);
+// Separate cache for different types of data with different expiry times
+const imageCacheTime = 60 * 60 * 1000; // 1 hour for image validation
+const staticDataCacheTime = 2 * 60 * 60 * 1000; // 2 hours for relatively static data like recent fish
+
+// Debounce mechanism to prevent rapid successive calls
+const pendingRequests = new Map(); // key: cacheKey, value: Promise
+
+// Check if cached data is still valid with different expiry times for different data types
+function isCacheValid(cacheEntry, sortType = 'default') {
+    if (!cacheEntry) return false;
     
-    // Filter by user if specified
-    if (userId) {
-        query = query.where('userId', '==', userId);
+    let expiryTime = cacheExpiryTime; // Default 30 minutes
+    
+    // Use longer cache times for less frequently changing data
+    if (sortType === 'hot' || sortType === 'score' || sortType === 'popular') {
+        expiryTime = staticDataCacheTime; // 2 hours for ranking data
+    } else if (sortType === 'recent' || sortType === 'date') {
+        expiryTime = cacheExpiryTime; // 30 minutes for recent data
     }
-
-    switch (sortType) {
-        case 'hot':
-            query = query.orderBy("hotScore", direction);
-            if (startAfter) {
-                query = query.startAfter(startAfter);
-            }
-            query = query.limit(limit);
-            break;
-        case 'score':
-        case 'popular':
-            query = query.orderBy("score", direction);
-            if (startAfter) {
-                query = query.startAfter(startAfter);
-            }
-            query = query.limit(limit);
-            break;
-
-        case 'date':
-        case 'recent':
-            query = query.orderBy("CreatedAt", direction);
-            if (startAfter) {
-                query = query.startAfter(startAfter);
-            }
-            query = query.limit(limit);
-            break;
-
-        case 'random':
-            // For random, we can't use pagination in the traditional sense
-            return await getRandomFish(limit, userId);
-
-        default:
-            // Default to most recent
-            query = query.orderBy("CreatedAt", direction);
-            if (startAfter) {
-                query = query.startAfter(startAfter);
-            }
-            query = query.limit(limit);
-    }
-
-    const snapshot = await query.get();
-    return snapshot.docs;
+    
+    return (Date.now() - cacheEntry.timestamp) < expiryTime;
 }
+
+// Generate cache key for fish queries
+function generateCacheKey(sortType, limit, userId, startAfter) {
+    const key = `${sortType}_${limit}_${userId || 'all'}`;
+    // Don't cache paginated queries to avoid complexity
+    return startAfter ? null : key;
+}
+
+// Get fish from Firestore with different sorting options (unified function for both tank and rank)
+async function getFishBySort(sortType, limit = 25, startAfter = null, direction = 'desc', userId = null) {
+    // Check cache first (only for non-paginated queries)
+    const cacheKey = generateCacheKey(sortType, limit, userId, startAfter);
+    if (cacheKey) {
+        const cached = fishDataCache.get(cacheKey);
+        if (isCacheValid(cached, sortType)) {
+            console.log(`Using cached fish data for ${cacheKey} (cache hit saves Firestore read)`);
+            return cached.data;
+        }
+
+        // Check if there's already a pending request for this data
+        if (pendingRequests.has(cacheKey)) {
+            console.log(`Reusing pending request for ${cacheKey} (prevents duplicate reads)`);
+            return await pendingRequests.get(cacheKey);
+        }
+    }
+
+    // Create the actual query promise
+    const queryPromise = async () => {
+        let query = window.db.collection('fishes_test');
+
+        // Filter out flagged and deleted fish
+        query = query.where('isVisible', '==', true);
+        
+        // Filter by user if specified
+        if (userId) {
+            query = query.where('userId', '==', userId);
+        }
+
+        switch (sortType) {
+            case 'hot':
+                query = query.orderBy("hotScore", direction);
+                if (startAfter) {
+                    query = query.startAfter(startAfter);
+                }
+                query = query.limit(limit);
+                break;
+            case 'score':
+            case 'popular':
+                query = query.orderBy("score", direction);
+                if (startAfter) {
+                    query = query.startAfter(startAfter);
+                }
+                query = query.limit(limit);
+                break;
+
+            case 'date':
+            case 'recent':
+                query = query.orderBy("CreatedAt", direction);
+                if (startAfter) {
+                    query = query.startAfter(startAfter);
+                }
+                query = query.limit(limit);
+                break;
+
+            case 'random':
+                // For random, we can't use pagination in the traditional sense
+                return await getRandomFish(limit, userId);
+
+            default:
+                // Default to most recent
+                query = query.orderBy("CreatedAt", direction);
+                if (startAfter) {
+                    query = query.startAfter(startAfter);
+                }
+                query = query.limit(limit);
+        }
+
+        const snapshot = await query.get();
+        
+        // Cache the results (only for non-paginated queries)
+        if (cacheKey) {
+            fishDataCache.set(cacheKey, {
+                data: snapshot.docs,
+                timestamp: Date.now()
+            });
+            console.log(`Cached fish data for ${cacheKey} (${snapshot.docs.length} documents)`);
+        }
+        
+        return snapshot.docs;
+    };
+
+    // Store the promise in pending requests to prevent duplicates
+    if (cacheKey) {
+        pendingRequests.set(cacheKey, queryPromise());
+        try {
+            const result = await pendingRequests.get(cacheKey);
+            pendingRequests.delete(cacheKey);
+            return result;
+        } catch (error) {
+            pendingRequests.delete(cacheKey);
+            throw error;
+        }
+    } else {
+        // For paginated queries, just execute directly
+        return await queryPromise();
+    }
+}
+
+// Clean up expired cache entries to prevent memory leaks
+function cleanupExpiredCache() {
+    const now = Date.now();
+    for (const [key, entry] of fishDataCache.entries()) {
+        if (!isCacheValid(entry)) {
+            fishDataCache.delete(key);
+        }
+    }
+    
+    // Also cleanup image validation cache
+    for (const [url, entry] of imageValidationCache.entries()) {
+        if ((now - entry.timestamp) > imageCacheTime) {
+            imageValidationCache.delete(url);
+        }
+    }
+    
+    console.log(`Cache cleanup: ${fishDataCache.size} fish entries, ${imageValidationCache.size} image entries remaining`);
+}
+
+// Run cache cleanup every 30 minutes
+setInterval(cleanupExpiredCache, 30 * 60 * 1000);
 
 // Convert fish image to data URL for display
 function createFishImageDataUrl(imgUrl, callback) {

@@ -448,10 +448,10 @@ async function loadFishData(sortType = currentSort, isInitialLoad = true) {
             loadingElement.style.display = 'block';
         }
 
-        const fishDocs = await getFishBySort(sortType, 50, lastDoc, sortDirection, currentUserId);
+        const fishDocs = await getFishBySort(sortType, 25, lastDoc, sortDirection, currentUserId); // Reduced from 50 to 25
 
         // Check if we got fewer docs than requested (indicates end of data)
-        if (fishDocs.length < 50 && sortType !== 'random') {
+        if (fishDocs.length < 25 && sortType !== 'random') {
             hasMoreFish = false;
         }
 

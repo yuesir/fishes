@@ -724,101 +724,102 @@ async function loadInitialFish(sortType = 'recent') {
     }
 }
 
-// Set up real-time listener for new fish
+// Set up periodic polling instead of real-time listener to reduce costs
 function setupNewFishListener() {
     // Remove existing listener if any
     if (newFishListener) {
-        newFishListener();
+        clearInterval(newFishListener);
         newFishListener = null;
     }
 
-    // Set up the listener for new fish only
+    // Use polling every 30 seconds instead of real-time listener
+    newFishListener = setInterval(async () => {
+        try {
+            await checkForNewFish();
+        } catch (error) {
+            console.error('Error checking for new fish:', error);
+        }
+    }, 30000); // Poll every 30 seconds
+}
+
+// Check for new fish using a single query instead of real-time listener
+async function checkForNewFish() {
     const baseQuery = window.db.collection('fishes_test')
         .where('isVisible', '==', true)
-        .orderBy('CreatedAt', 'desc');
+        .orderBy('CreatedAt', 'desc')
+        .limit(5); // Only check the 5 most recent fish
 
-    // If we have a timestamp, only listen for fish created after it
+    // If we have a timestamp, only look for fish created after it
     const query = newestFishTimestamp 
         ? baseQuery.where('CreatedAt', '>', newestFishTimestamp)
         : baseQuery;
 
-    newFishListener = query.onSnapshot((snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-            if (change.type === 'added') {
-                const doc = change.doc;
-                const data = doc.data();
-                const imageUrl = data.image || data.Image;
-                
-                if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.startsWith('http')) {
-                    console.warn('Skipping fish with invalid image:', doc.id, data);
-                    return;
-                }
+    const snapshot = await query.get();
+    
+    snapshot.docs.forEach((doc) => {
+        const data = doc.data();
+        const imageUrl = data.image || data.Image;
+        
+        if (!imageUrl || typeof imageUrl !== 'string' || !imageUrl.startsWith('http')) {
+            console.warn('Skipping fish with invalid image:', doc.id, data);
+            return;
+        }
 
-                // Only add if we haven't seen this fish before
-                if (!fishes.some(f => f.docId === doc.id)) {
-                    // If at capacity, animate death of oldest fish, then add new one
-                    if (fishes.length >= maxTankCapacity) {
-                       // Find the oldest fish by creation date (excluding dying fish)
-                        const aliveFish = fishes.filter(f => !f.isDying);
-                        let oldestFishIndex = -1;
-                        let oldestDate = null;
-                        
-                        aliveFish.forEach((fish, index) => {
-                            const fishDate = fish.createdAt;
-                            if (!oldestDate) {
-                                // First fish or no previous date found
-                                oldestDate = fishDate;
-                                oldestFishIndex = fishes.indexOf(fish);
-                            } else if (!fishDate) {
-                                // Fish without creation date should be considered oldest
-                                oldestDate = null;
-                                oldestFishIndex = fishes.indexOf(fish);
-                            } else if (oldestDate && fishDate.toDate() < oldestDate.toDate()) {
-                                // Found an older fish
-                                oldestDate = fishDate;
-                                oldestFishIndex = fishes.indexOf(fish);
-                            }
-                        });
-                        
-                        if (oldestFishIndex !== -1) {
-                            animateFishDeath(oldestFishIndex, () => {
-                                // After death animation completes, add new fish
-                                loadFishImageToTank(imageUrl, {
-                                    ...data,
-                                    docId: doc.id
-                                }, (newFish) => {
-                                    // Show subtle notification
-                                    showNewFishNotification(data.artist || data.Artist || 'Anonymous');
-                                    
-                                    // Update our timestamp tracking
-                                    const fishTimestamp = data.CreatedAt || data.createdAt;
-                                    if (!newestFishTimestamp || fishTimestamp.toDate() > newestFishTimestamp.toDate()) {
-                                        newestFishTimestamp = fishTimestamp;
-                                    }
-                                });
-                            });
-                        }
-                    } else {
-                        // Tank not at capacity, add fish immediately
-                         loadFishImageToTank(imageUrl, {
+        // Only add if we haven't seen this fish before
+        if (!fishes.some(f => f.docId === doc.id)) {
+            // Update newest timestamp
+            const fishDate = data.CreatedAt;
+            if (!newestFishTimestamp || (fishDate && fishDate.toDate() > newestFishTimestamp.toDate())) {
+                newestFishTimestamp = fishDate;
+            }
+            
+            // If at capacity, animate death of oldest fish, then add new one
+            if (fishes.length >= maxTankCapacity) {
+                // Find the oldest fish by creation date (excluding dying fish)
+                const aliveFish = fishes.filter(f => !f.isDying);
+                let oldestFishIndex = -1;
+                let oldestDate = null;
+                
+                aliveFish.forEach((fish, index) => {
+                    const fishDate = fish.createdAt;
+                    if (!oldestDate) {
+                        // First fish or no previous date found
+                        oldestDate = fishDate;
+                        oldestFishIndex = fishes.indexOf(fish);
+                    } else if (!fishDate) {
+                        // Fish without creation date should be considered oldest
+                        oldestDate = null;
+                        oldestFishIndex = fishes.indexOf(fish);
+                    } else if (oldestDate && fishDate.toDate() < oldestDate.toDate()) {
+                        // Found an older fish
+                        oldestDate = fishDate;
+                        oldestFishIndex = fishes.indexOf(fish);
+                    }
+                });
+                
+                if (oldestFishIndex !== -1) {
+                    animateFishDeath(oldestFishIndex, () => {
+                        // After death animation completes, add new fish
+                        loadFishImageToTank(imageUrl, {
                             ...data,
                             docId: doc.id
                         }, (newFish) => {
                             // Show subtle notification
                             showNewFishNotification(data.artist || data.Artist || 'Anonymous');
-                            
-                            // Update our timestamp tracking
-                            const fishTimestamp = data.CreatedAt || data.createdAt;
-                            if (!newestFishTimestamp || fishTimestamp.toDate() > newestFishTimestamp.toDate()) {
-                                newestFishTimestamp = fishTimestamp;
-                            }
                         });
-                    }
+                    });
                 }
+            } else {
+                // Tank not at capacity, add fish immediately
+                loadFishImageToTank(imageUrl, {
+                    ...data,
+                    docId: doc.id
+                }, (newFish) => {
+                    // Show subtle notification
+                    showNewFishNotification(data.artist || data.Artist || 'Anonymous');
+                });
             }
-        });
-    }, (error) => {
-        console.error('Error listening for new fish:', error);
+        }
     });
 }
 
