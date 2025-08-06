@@ -8,6 +8,7 @@ const publicTanksLimit = 12;
 let viewingUserId = null; // Track if we're viewing another user's tanks
 let allTanks = []; // Store all tanks for filtering
 let filteredTanks = []; // Store filtered tanks
+let currentPublicSort = 'updatedAt'; // Track current sort for public tanks
 
 // Initialize when page loads
 document.addEventListener('DOMContentLoaded', async function() {
@@ -140,6 +141,12 @@ function showTab(tabName) {
             break;
         case 'public-tanks':
             loadPublicTanks();
+            break;
+        case 'trending-tanks':
+            loadTrendingTanks();
+            break;
+        case 'popular-tanks':
+            loadPopularTanks();
             break;
     }
 }
@@ -297,7 +304,7 @@ async function loadUserTanks(userId) {
 }
 
 // Load public tanks
-async function loadPublicTanks(page = 0) {
+async function loadPublicTanks(page = 0, sortBy = null) {
     const loading = document.getElementById('public-tanks-loading');
     const error = document.getElementById('public-tanks-error');
     const grid = document.getElementById('public-tanks-grid');
@@ -306,8 +313,12 @@ async function loadPublicTanks(page = 0) {
     error.style.display = 'none';
     if (page === 0) grid.innerHTML = '';
     
+    // Use provided sortBy or current sort setting
+    const actualSortBy = sortBy || currentPublicSort;
+    currentPublicSort = actualSortBy;
+    
     try {
-        const response = await fetch(`${BACKEND_URL}/api/fishtanks/public/list?limit=${publicTanksLimit}&offset=${page * publicTanksLimit}`);
+        const response = await fetch(`${BACKEND_URL}/api/fishtanks/public/list?limit=${publicTanksLimit}&offset=${page * publicTanksLimit}&sortBy=${actualSortBy}`);
         
         if (!response.ok) {
             throw new Error('Failed to load public tanks');
@@ -316,15 +327,87 @@ async function loadPublicTanks(page = 0) {
         const data = await response.json();
         
         if (page === 0) {
+            // For first page, use renderTanks to properly set up allTanks and filteredTanks
             renderTanks(data.fishtanks, grid, false);
         } else {
+            // For subsequent pages, just append
             appendTanks(data.fishtanks, grid, false);
         }
         
-        updatePagination(data.fishtanks.length);
+        updatePagination(data.fishtanks.length, 'public-tanks-pagination');
     } catch (err) {
         console.error('Error loading public tanks:', err);
         error.textContent = 'Failed to load public tanks. Please try again.';
+        error.style.display = 'block';
+    } finally {
+        loading.style.display = 'none';
+    }
+}
+
+// Load trending tanks
+async function loadTrendingTanks(days = 7) {
+    const loading = document.getElementById('trending-tanks-loading');
+    const error = document.getElementById('trending-tanks-error');
+    const grid = document.getElementById('trending-tanks-grid');
+    const empty = document.getElementById('trending-tanks-empty');
+    
+    loading.style.display = 'block';
+    error.style.display = 'none';
+    empty.style.display = 'none';
+    grid.innerHTML = '';
+    
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/fishtanks/trending/list?limit=${publicTanksLimit}&days=${days}`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to load trending tanks');
+        }
+        
+        const data = await response.json();
+        
+        if (data.fishtanks.length === 0) {
+            empty.style.display = 'block';
+        } else {
+            renderTrendingTanks(data.fishtanks, grid);
+        }
+    } catch (err) {
+        console.error('Error loading trending tanks:', err);
+        error.textContent = 'Failed to load trending tanks. Please try again.';
+        error.style.display = 'block';
+    } finally {
+        loading.style.display = 'none';
+    }
+}
+
+// Load popular tanks
+async function loadPopularTanks(minViews = 5) {
+    const loading = document.getElementById('popular-tanks-loading');
+    const error = document.getElementById('popular-tanks-error');
+    const grid = document.getElementById('popular-tanks-grid');
+    const empty = document.getElementById('popular-tanks-empty');
+    
+    loading.style.display = 'block';
+    error.style.display = 'none';
+    empty.style.display = 'none';
+    grid.innerHTML = '';
+    
+    try {
+        const response = await fetch(`${BACKEND_URL}/api/fishtanks/popular/list?limit=${publicTanksLimit}&minViews=${minViews}`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to load popular tanks');
+        }
+        
+        const data = await response.json();
+        
+        if (data.fishtanks.length === 0) {
+            empty.style.display = 'block';
+        } else {
+            renderTanks(data.fishtanks, grid, false);
+        }
+    } catch (err) {
+        console.error('Error loading popular tanks:', err);
+        error.textContent = 'Failed to load popular tanks. Please try again.';
         error.style.display = 'block';
     } finally {
         loading.style.display = 'none';
@@ -351,6 +434,15 @@ function renderTanks(tanks, container, isOwner) {
 function appendTanks(tanks, container, isOwner) {
     tanks.forEach(tank => {
         const tankCard = createTankCard(tank, isOwner);
+        container.appendChild(tankCard);
+    });
+}
+
+// Render trending tanks (with special trending info)
+function renderTrendingTanks(tanks, container) {
+    container.innerHTML = '';
+    tanks.forEach(tank => {
+        const tankCard = createTrendingTankCard(tank);
         container.appendChild(tankCard);
     });
 }
@@ -395,8 +487,49 @@ function createTankCard(tank, isOwner) {
             ${isOwner ? `
                 <button class="btn-small btn-edit" onclick="editTank('${tank.id}')">Edit</button>
                 <button class="btn-small btn-share" onclick="shareTank('${tank.id}', '${tank.shareId}')">Share</button>
+                <button class="btn-small btn-stats" onclick="showTankStats('${tank.id}')">Stats</button>
                 <button class="btn-small btn-delete" onclick="deleteTank('${tank.id}')">Delete</button>
             ` : ''}
+        </div>
+    `;
+    
+    return card;
+}
+
+// Create trending tank card element
+function createTrendingTankCard(tank) {
+    const card = document.createElement('div');
+    card.className = 'tank-card trending-tank';
+    
+    const createdDate = new Date(tank.createdAt._seconds * 1000).toLocaleDateString();
+    const updatedDate = new Date(tank.updatedAt._seconds * 1000).toLocaleDateString();
+    
+    card.innerHTML = `
+        <div class="tank-privacy-badge trending">
+            🔥 Trending
+        </div>
+        <h3>${tank.name}</h3>
+        <div class="tank-info">
+            <p>${tank.description || 'No description provided'}</p>
+            <p><strong>Created:</strong> ${createdDate}</p>
+            <p><strong>Updated:</strong> ${updatedDate}</p>
+        </div>
+        <div class="tank-stats">
+            <div class="stat">
+                <div class="stat-number">${tank.fishCount || 0}</div>
+                <div class="stat-label">Fish</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number">${tank.viewCount || 0}</div>
+                <div class="stat-label">Total Views</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number">${tank.trendingViews || 0}</div>
+                <div class="stat-label">Recent Views</div>
+            </div>
+        </div>
+        <div class="tank-actions">
+            <button class="btn-small btn-view" onclick="viewTank('${tank.id}')">View</button>
         </div>
     `;
     
@@ -738,8 +871,10 @@ function showSuccess(elementId, message) {
 }
 
 // Update pagination
-function updatePagination(loadedCount) {
-    const pagination = document.getElementById('public-tanks-pagination');
+function updatePagination(loadedCount, paginationId = 'public-tanks-pagination') {
+    const pagination = document.getElementById(paginationId);
+    if (!pagination) return;
+    
     pagination.innerHTML = '';
     
     if (loadedCount === publicTanksLimit) {
@@ -748,7 +883,9 @@ function updatePagination(loadedCount) {
         loadMoreBtn.textContent = 'Load More';
         loadMoreBtn.onclick = () => {
             publicTanksPage++;
-            loadPublicTanks(publicTanksPage);
+            if (paginationId === 'public-tanks-pagination') {
+                loadPublicTanks(publicTanksPage);
+            }
         };
         pagination.appendChild(loadMoreBtn);
     }
@@ -905,8 +1042,105 @@ async function addFishToTank(fishId) {
     }
 }
 
+// Get tank statistics (for owners)
+async function getTankStats(tankId) {
+    if (!currentUser) return null;
+    
+    try {
+        const token = localStorage.getItem('userToken');
+        const response = await fetch(`${BACKEND_URL}/api/fishtanks/${tankId}/stats`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (!response.ok) {
+            if (response.status === 403) {
+                throw new Error('Only tank owners can view detailed statistics');
+            }
+            throw new Error('Failed to load tank statistics');
+        }
+        
+        const data = await response.json();
+        return data;
+    } catch (err) {
+        console.error('Error loading tank stats:', err);
+        throw err;
+    }
+}
+
+// Show tank statistics modal
+async function showTankStats(tankId) {
+    try {
+        const stats = await getTankStats(tankId);
+        
+        // Create or update stats modal content
+        let modal = document.getElementById('tank-stats-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'tank-stats-modal';
+            modal.className = 'modal';
+            document.body.appendChild(modal);
+        }
+        
+        const lastViewed = stats.lastViewedAt ? new Date(stats.lastViewedAt).toLocaleDateString() : 'Never';
+        
+        modal.innerHTML = `
+            <div class="modal-content">
+                <span class="close" onclick="closeModal('tank-stats-modal')">&times;</span>
+                <h2>Tank Statistics</h2>
+                <div class="stats-overview">
+                    <div class="stat-item">
+                        <h3>${stats.totalViews}</h3>
+                        <p>Total Views</p>
+                    </div>
+                    <div class="stat-item">
+                        <h3>${stats.recentViews}</h3>
+                        <p>Views (Last 30 Days)</p>
+                    </div>
+                    <div class="stat-item">
+                        <h3>${lastViewed}</h3>
+                        <p>Last Viewed</p>
+                    </div>
+                </div>
+                ${Object.keys(stats.dailyViews).length > 0 ? `
+                    <div class="daily-stats">
+                        <h3>Daily Views (Last 30 Days)</h3>
+                        <div class="daily-views-chart">
+                            ${Object.entries(stats.dailyViews)
+                                .sort(([a], [b]) => new Date(a) - new Date(b))
+                                .map(([date, views]) => `
+                                    <div class="day-stat">
+                                        <div class="day-date">${new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                                        <div class="day-views">${views}</div>
+                                    </div>
+                                `).join('')}
+                        </div>
+                    </div>
+                ` : ''}
+            </div>
+        `;
+        
+        modal.style.display = 'block';
+    } catch (err) {
+        alert('Failed to load tank statistics: ' + err.message);
+    }
+}
+
 // Search and filter functions
 function filterTanks() {
+    const activeTab = document.querySelector('.tab-content.active').id;
+    
+    // For public tanks, we need to handle filtering differently since we use backend sorting
+    if (activeTab === 'public-tanks') {
+        // For public tanks, just re-apply the current sort which will reload from backend
+        const sortBy = document.getElementById('tank-sort').value;
+        const backendSortBy = sortBy === 'views' ? 'viewCount' : sortBy;
+        publicTanksPage = 0; // Reset pagination
+        loadPublicTanks(0, backendSortBy);
+        return;
+    }
+    
     const searchQuery = document.getElementById('tank-search').value.toLowerCase();
     const privacyFilter = document.getElementById('tank-filter').value;
     
@@ -933,6 +1167,34 @@ function sortTanks(skipRefilter = false) {
     }
     
     const sortBy = document.getElementById('tank-sort').value;
+    const activeTab = document.querySelector('.tab-content.active').id;
+    
+    // For public tanks, use backend sorting instead of client-side sorting
+    if (activeTab === 'public-tanks') {
+        publicTanksPage = 0; // Reset pagination
+        
+        // Map frontend sort values to backend sort values
+        let backendSortBy;
+        switch(sortBy) {
+            case 'views':
+                backendSortBy = 'viewCount';
+                break;
+            case 'updated':
+                backendSortBy = 'updatedAt';
+                break;
+            case 'created':
+                backendSortBy = 'createdAt';
+                break;
+            case 'name':
+                backendSortBy = 'name';
+                break;
+            default:
+                backendSortBy = 'updatedAt';
+        }
+        
+        loadPublicTanks(0, backendSortBy);
+        return;
+    }
     
     filteredTanks.sort((a, b) => {
         switch(sortBy) {
@@ -942,8 +1204,6 @@ function sortTanks(skipRefilter = false) {
                 return (b.createdAt._seconds || 0) - (a.createdAt._seconds || 0);
             case 'name':
                 return a.name.localeCompare(b.name);
-            case 'fish':
-                return (b.fishCount || 0) - (a.fishCount || 0);
             case 'views':
                 return (b.viewCount || 0) - (a.viewCount || 0);
             default:
@@ -952,7 +1212,6 @@ function sortTanks(skipRefilter = false) {
     });
     
     // Re-render the filtered and sorted tanks
-    const activeTab = document.querySelector('.tab-content.active').id;
     const container = document.getElementById(activeTab + '-grid');
     const isOwner = activeTab === 'my-tanks';
     
@@ -968,6 +1227,17 @@ function sortTanks(skipRefilter = false) {
 function clearSearch() {
     document.getElementById('tank-search').value = '';
     document.getElementById('tank-filter').value = 'all';
+    
+    const activeTab = document.querySelector('.tab-content.active').id;
+    
+    // For public tanks, reload with default sort
+    if (activeTab === 'public-tanks') {
+        publicTanksPage = 0;
+        currentPublicSort = 'updatedAt';
+        loadPublicTanks(0);
+        return;
+    }
+    
     filterTanks();
 }
 
@@ -1003,3 +1273,6 @@ window.showAddFishModal = showAddFishModal;
 window.filterTanks = filterTanks;
 window.sortTanks = sortTanks;
 window.clearSearch = clearSearch;
+window.loadTrendingTanks = loadTrendingTanks;
+window.loadPopularTanks = loadPopularTanks;
+window.showTankStats = showTankStats;
