@@ -92,13 +92,15 @@ async function loadFlaggedFish(loadMore = false) {
                     `0 of ${flaggedFish.length}+ moderated (0%)`;
             }
         } else {
-            // Fallback to Firebase
-            await loadFlaggedFishFromFirebase(loadMore);
+            // Use backend API as primary
+            await loadFlaggedFishFromBackend(loadMore);
         }
     } catch (error) {
         console.error('Error loading flagged fish:', error);
-        // Fallback to Firebase
-        await loadFlaggedFishFromFirebase(loadMore);
+        // Show error message without Firebase fallback
+        if (!loadMore) {
+            alert('Error loading fish. Please try again.');
+        }
     } finally {
         if (!loadMore) {
             document.getElementById('loading').style.display = 'none';
@@ -106,41 +108,35 @@ async function loadFlaggedFish(loadMore = false) {
     }
 }
 
-// Fallback Firebase loading
-async function loadFlaggedFishFromFirebase(loadMore = false) {
+// Load flagged fish from backend API
+async function loadFlaggedFishFromBackend(loadMore = false) {
     try {
-        let query = window.db.collection('fishes_test')
-            .where('flaggedForReview', '==', true)
-            .where('deleted', '==', false)
-            .orderBy('CreatedAt', 'asc'); // Oldest first
+        const token = localStorage.getItem('userToken');
+        const offset = loadMore ? flaggedFish.length : 0;
         
-        // Add pagination for infinite loading
-        if (loadMore && lastDoc) {
-            query = query.startAfter(lastDoc);
-        }
-        
-        query = query.limit(200); // Increased batch size
+        const response = await fetch(`${API_BASE_URL}/moderate/flagged?limit=200&offset=${offset}&sort=oldest`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
 
-        const snapshot = await query.get();
-        const newFish = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
-        
-        // Update lastDoc for pagination
-        if (snapshot.docs.length > 0) {
-            lastDoc = snapshot.docs[snapshot.docs.length - 1];
+        if (!response.ok) {
+            throw new Error('Failed to load flagged fish');
         }
-        
-        // Check if we got fewer fish than requested (might be end of data)
-        if (snapshot.docs.length < 200) {
-            hasMoreFish = false;
-        }
+
+        const data = await response.json();
+        const newFish = data.items;
         
         if (loadMore) {
             flaggedFish = [...flaggedFish, ...newFish];
         } else {
             flaggedFish = newFish;
+        }
+        
+        // Check if we got fewer fish than requested (might be end of data)
+        if (newFish.length < 200) {
+            hasMoreFish = false;
         }
         
         stats.remaining = flaggedFish.length - currentIndex;
@@ -154,7 +150,7 @@ async function loadFlaggedFishFromFirebase(loadMore = false) {
                 `0 of ${flaggedFish.length}+ moderated (0%)`;
         }
     } catch (error) {
-        console.error('Error loading flagged fish from Firebase:', error);
+        console.error('Error loading flagged fish from backend:', error);
         if (!loadMore) {
             alert('Error loading fish. Please try again.');
         }
@@ -706,10 +702,17 @@ async function refreshFishImage(fishId, card, expectedFlipped = null) {
         // Add a minimal delay to allow backend processing
         await new Promise(resolve => setTimeout(resolve, 100));
         
-        // Fetch updated fish data
-        const fishDoc = await window.db.collection('fishes_test').doc(fishId).get();
-        if (fishDoc.exists) {
-            const updatedFish = fishDoc.data();
+        // Fetch updated fish data from backend
+        const token = localStorage.getItem('userToken');
+        const response = await fetch(`${API_BASE_URL}/moderate/fish/${fishId}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (response.ok) {
+            const updatedFish = await response.json();
             const img = card.querySelector('.fish-image');
             if (img && updatedFish.image) {
                 // Add timestamp to force reload and clear cache
@@ -909,12 +912,18 @@ async function processSwipeAction(action, fishId) {
                 return; // Success
             }
             
-            console.warn('Flip endpoint failed, trying Firebase direct update');
+            console.warn('Flip endpoint failed, trying direct backend update');
             
-            // Final fallback: Direct Firebase update
-            const fishDoc = await window.db.collection('fishes_test').doc(fishId).get();
-            if (fishDoc.exists) {
-                const fishData = fishDoc.data();
+            // Fallback: Try to get fish data and update with new timestamp
+            const fishResponse = await fetch(`${API_BASE_URL}/moderate/fish/${fishId}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (fishResponse.ok) {
+                const fishData = await fishResponse.json();
                 if (fishData.image) {
                     // For now, we'll just refresh the image with a timestamp
                     // In a real implementation, you'd want image processing
@@ -922,11 +931,22 @@ async function processSwipeAction(action, fishId) {
                         fishData.image.split('?')[0] + '?rotated=' + Date.now() :
                         fishData.image + '?rotated=' + Date.now();
                     
-                    await window.db.collection('fishes_test').doc(fishId).update({
-                        image: updatedImage,
-                        lastRotated: new Date()
+                    // Use a generic update endpoint if available
+                    const updateResponse = await fetch(`${API_BASE_URL}/moderate/update/${fishId}`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            image: updatedImage,
+                            lastRotated: new Date().toISOString()
+                        })
                     });
-                    return; // Success
+                    
+                    if (updateResponse.ok) {
+                        return; // Success
+                    }
                 }
             }
             

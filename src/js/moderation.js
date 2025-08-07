@@ -1,6 +1,5 @@
 // Moderation Panel JavaScript
 let currentFilter = 'all';
-let currentPage = 0;
 let isLoading = false;
 let fishCache = [];
 let stats = { total: 0, flagged: 0, approved: 0, deleted: 0, pending: 0, valid: 0, invalid: 0 };
@@ -90,7 +89,6 @@ async function loadFish(loadMore = false) {
         document.getElementById('loading').style.display = 'block';
         document.getElementById('fishGrid').style.display = 'none';
         fishCache = [];
-        currentPage = 0;
         selectedFish.clear();
         updateBulkActions();
     }
@@ -99,9 +97,22 @@ async function loadFish(loadMore = false) {
         let fishData;
         const token = localStorage.getItem('userToken');
 
-        // Use backend API for flagged filter
-        if (currentFilter === 'flagged') {
-            const response = await fetch(`${API_BASE_URL}/moderate/flagged?limit=50&offset=${currentPage * 50}`, {
+        // Use backend API for reported filter (which has a specific endpoint)
+        if (currentFilter === 'reported') {
+            const params = new URLSearchParams({
+                limit: '50',
+                sortBy: 'reportCount',
+                sortOrder: 'desc'
+            });
+            
+            // Add pagination using offset for reported endpoint (it uses offset, not startAfter)
+            if (loadMore && fishCache.length > 0) {
+                params.append('offset', fishCache.length.toString());
+            } else {
+                params.append('offset', '0');
+            }
+            
+            const response = await fetch(`${API_BASE_URL}/moderate/reported?${params}`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
@@ -110,16 +121,18 @@ async function loadFish(loadMore = false) {
 
             if (response.ok) {
                 const data = await response.json();
-                fishData = data.items.map(item => ({
-                    id: item.id,
-                    data: () => item
-                }));
+                fishData = data.items
+                    .filter(item => !item.deleted) // Filter out deleted fish
+                    .map(item => ({
+                        id: item.id,
+                        data: () => item
+                    }));
             } else {
-                throw new Error('Failed to load flagged fish');
+                throw new Error('Failed to load reported fish');
             }
         } else {
-            // Use Firebase for other filters
-            fishData = await loadFishFromFirebase(loadMore);
+            // Use backend API for other filters
+            fishData = await loadFishFromBackend(loadMore);
         }
 
         if (fishData && fishData.length > 0) {
@@ -129,7 +142,6 @@ async function loadFish(loadMore = false) {
                 fishCache = fishData;
             }
             renderFish();
-            currentPage++;
         }
 
         document.getElementById('loadMore').style.display =
@@ -145,49 +157,108 @@ async function loadFish(loadMore = false) {
     }
 }
 
-// Load fish from Firebase (fallback and other filters)
-async function loadFishFromFirebase(loadMore) {
-    let query = window.db.collection('fishes_test');
+// Load fish from backend API using fish-utils.js
+async function loadFishFromBackend(loadMore) {
+    // Use the existing getFishBySort function from fish-utils.js for basic filters
+    let fishDocs;
+    
+    if (currentFilter === 'all') {
+        // Use the standard fish loading function with proper pagination
+        const startAfterDoc = loadMore && fishCache.length > 0 ? fishCache[fishCache.length - 1] : null;
+        fishDocs = await getFishBySort('recent', 50, startAfterDoc, 'desc');
+    } else {
+        // For moderation-specific filters, make direct API calls with correct parameters
+        const token = localStorage.getItem('userToken');
+        
+        const params = new URLSearchParams({
+            limit: '50',
+            orderBy: 'CreatedAt',
+            order: 'desc'
+        });
 
-    switch (currentFilter) {
-        case 'reported':
-            query = query.where('reportCount', '>', 0).where('isVisible', '==', true)
-                .orderBy('reportCount', 'desc');
-            break;
-        case 'recent':
-            const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
-            query = query.where('isVisible', '==', true).where('CreatedAt', '>=', yesterday)
-                .orderBy('CreatedAt', 'desc');
-            break;
-        case 'high-score':
-            query = query.where('isVisible', '==', true).orderBy('score', 'desc');
-            break;
-        case 'low-score':
-            query = query.where('isVisible', '==', true).orderBy('score', 'asc');
-            break;
-        case 'deleted':
-            query = query.where('deleted', '==', true).orderBy('CreatedAt', 'desc');
-            break;
-        case 'needs-validity':
-            query = query.where('isFish', '==', null).orderBy('CreatedAt', 'desc');
-            break;
-        case 'valid':
-            query = query.where('isFish', '==', true).orderBy('CreatedAt', 'desc');
-            break;
-        case 'invalid':
-            query = query.where('isFish', '==', false).orderBy('CreatedAt', 'desc');
-            break;
-        default:
-            query = query.where('isVisible', '==', true).orderBy('CreatedAt', 'desc');
+        // Add pagination using startAfter if loading more
+        if (loadMore && fishCache.length > 0) {
+            const lastFish = fishCache[fishCache.length - 1];
+            params.append('startAfter', lastFish.id);
+        }
+
+        // Handle moderation filters according to the backend endpoint
+        switch (currentFilter) {
+            case 'deleted':
+                // For deleted fish, set isVisible to 'all' to get everything, then we'll need to filter client-side
+                // or the backend needs to support deleted parameter specifically
+                params.set('deleted', 'true');
+                break;
+            case 'approved':
+                params.set('isVisible', 'true');
+                params.append('approved', 'true');
+                break;
+            case 'unapproved':
+                params.set('isVisible', 'true');
+                params.append('approved', 'false');
+                break;
+            case 'valid':
+                params.set('isVisible', 'true');
+                params.append('isFish', 'true');
+                break;
+            case 'invalid':
+                params.set('isVisible', 'true');
+                params.append('isFish', 'false');
+                break;
+            case 'unmoderated':
+                params.set('isVisible', 'true');
+                // For unmoderated, we want fish where isFish is null/undefined
+                // This might need special backend handling since Firestore queries with null are tricky
+                break;
+            case 'flagged':
+                params.set('isVisible', 'true');
+                params.append('flaggedForReview', 'true');
+                break;
+            case 'high score':
+            case 'high-score':
+            case 'highscore':
+                params.set('isVisible', 'true');
+                params.set('orderBy', 'score');
+                params.set('order', 'desc');
+                break;
+            case 'low score':
+            case 'low-score':
+            case 'lowscore':
+                params.set('isVisible', 'true');
+                params.set('orderBy', 'score');
+                params.set('order', 'asc');
+                break;
+        }
+
+        const response = await fetch(`${BACKEND_URL}/api/fish?${params}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to load fish: ${response.status}`);
+        }
+
+        const data = await response.json();
+        
+        // Convert backend response to the expected format
+        fishDocs = data.data.map(item => ({
+            id: item.id,
+            data: () => item
+        }));
+
+        // For 'unmoderated' filter, we need to filter client-side since Firestore doesn't handle null queries well
+        if (currentFilter === 'unmoderated') {
+            fishDocs = fishDocs.filter(doc => {
+                const fish = doc.data();
+                return fish.isFish === null || fish.isFish === undefined;
+            });
+        }
     }
-
-    if (loadMore && fishCache.length > 0) {
-        const lastDoc = fishCache[fishCache.length - 1];
-        query = query.startAfter(lastDoc);
-    }
-
-    const snapshot = await query.limit(50).get();
-    return snapshot.docs;
+    
+    return fishDocs;
 }
 
 // Render fish in the grid
@@ -739,29 +810,186 @@ function loadMoreFish() {
 // Load and display reports for a specific fish
 async function loadReportsForFish(fishId) {
     try {
-        const reportsSnapshot = await window.db.collection('reports')
-            .where('fishId', '==', fishId)
-            .orderBy('reportedAt', 'desc')
-            .get();
+        const token = localStorage.getItem('userToken');
+        const response = await fetch(`${API_BASE_URL}/moderate/reports/${fishId}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
 
-        if (reportsSnapshot.empty) {
-            console.log('No reports found for this fish.');
+        if (!response.ok) {
+            throw new Error('Failed to load reports');
+        }
+
+        const data = await response.json();
+        
+        // Extract the reports array from the response
+        const reports = data.reports || [];
+
+        console.log('Reports data received:', data); // Debug logging
+        console.log('Reports array:', reports); // Debug logging
+
+        if (!Array.isArray(reports)) {
+            console.error('Reports is not an array:', reports);
+            throw new Error('Invalid response format: reports is not an array');
+        }
+
+        if (reports.length === 0) {
+            showReportsModal(fishId, [], data.fishData);
             return;
         }
 
-        let reportText = `Reports for Fish ${fishId}:\n\n`;
-        reportsSnapshot.docs.forEach((doc, index) => {
-            const report = doc.data();
-            const reportedAt = report.reportedAt ? formatDate(report.reportedAt) : 'Unknown date';
-            reportText += `Report ${index + 1}:\n`;
-            reportText += `Reason: ${report.reason}\n`;
-            reportText += `Reported: ${reportedAt}\n`;
-            reportText += `Status: ${report.status || 'pending'}\n\n`;
-        });
-
-        console.log(reportText);
+        showReportsModal(fishId, reports, data.fishData);
     } catch (error) {
         console.error('Error loading reports:', error);
+        alert('Error loading reports. Please try again.');
+    }
+}
+
+// Show reports in a modal dialog
+function showReportsModal(fishId, reports, fishData = null) {
+    // Ensure reports is an array
+    if (!Array.isArray(reports)) {
+        console.error('showReportsModal: reports is not an array:', reports);
+        reports = [];
+    }
+
+    let modalHtml;
+    
+    if (reports.length === 0) {
+        modalHtml = `
+            <div style="text-align: center; padding: 20px;">
+                <h2 style="margin: 0 0 20px 0; color: #333; font-size: 1.5em;">📋 Reports for Fish ${fishId}</h2>
+                <div style="color: #666; font-size: 16px; margin: 20px 0;">
+                    <p>No reports found for this fish.</p>
+                    <p>🎉 This fish is clean!</p>
+                </div>
+                ${fishData ? `
+                    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin: 20px 0; text-align: left;">
+                        <h4 style="margin: 0 0 10px 0; color: #333;">Fish Summary:</h4>
+                        <div style="font-size: 14px; color: #666;">
+                            <div><strong>Report Count:</strong> ${fishData.reportCount || 0}</div>
+                            <div><strong>Unique Reporters:</strong> ${fishData.uniqueReporterCount || 0}</div>
+                            <div><strong>Flagged for Review:</strong> ${fishData.flaggedForReview ? 'Yes' : 'No'}</div>
+                            ${fishData.lastReportedAt ? `<div><strong>Last Reported:</strong> ${formatDate(fishData.lastReportedAt)}</div>` : ''}
+                        </div>
+                    </div>
+                ` : ''}
+                <button onclick="closeModal()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px;">
+                    Close
+                </button>
+            </div>
+        `;
+    } else {
+        let reportsHtml = '';
+        reports.forEach((report, index) => {
+            const reportedAt = report.reportedAt ? formatDate(report.reportedAt) : 'Unknown date';
+            const status = report.status || 'pending';
+            const statusColor = status === 'resolved' ? '#28a745' : status === 'dismissed' ? '#6c757d' : '#ffc107';
+            const statusIcon = status === 'resolved' ? '✅' : status === 'dismissed' ? '❌' : '⏳';
+            
+            reportsHtml += `
+                <div style="border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin-bottom: 15px; background: #f8f9fa;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <h4 style="margin: 0; color: #333; font-size: 1.1em;">Report #${index + 1}</h4>
+                        <span style="background: ${statusColor}; color: white; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold;">
+                            ${statusIcon} ${status.toUpperCase()}
+                        </span>
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <strong style="color: #555;">Reason:</strong>
+                        <div style="background: white; padding: 8px; border-radius: 4px; margin-top: 4px; border-left: 3px solid #dc3545;">
+                            ${escapeHtml(report.reason || 'No reason provided')}
+                        </div>
+                    </div>
+                    <div style="font-size: 14px; color: #666;">
+                        <strong>Reported:</strong> ${reportedAt}
+                    </div>
+                    ${report.reporterId ? `
+                        <div style="font-size: 14px; color: #666; margin-top: 4px;">
+                            <strong>Reporter:</strong> ${escapeHtml(report.reporterName || 'Anonymous')}
+                        </div>
+                    ` : ''}
+                    ${report.reporterIP ? `
+                        <div style="font-size: 14px; color: #666; margin-top: 4px;">
+                            <strong>Reporter IP:</strong> ${escapeHtml(report.reporterIP)}
+                        </div>
+                    ` : ''}
+                    ${report.resolvedAt ? `
+                        <div style="font-size: 14px; color: #666; margin-top: 4px;">
+                            <strong>Resolved:</strong> ${formatDate(report.resolvedAt)}
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        });
+
+        modalHtml = `
+            <div style="padding: 20px; max-width: 600px;">
+                <h2 style="margin: 0 0 20px 0; color: #333; font-size: 1.5em; text-align: center;">
+                    📋 Reports for Fish ${fishId}
+                </h2>
+                <div style="margin-bottom: 20px; text-align: center; color: #666;">
+                    <strong>${reports.length}</strong> report${reports.length > 1 ? 's' : ''} found
+                </div>
+                ${fishData ? `
+                    <div style="background: #e8f4f8; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #0288d1;">
+                        <h4 style="margin: 0 0 10px 0; color: #0288d1;">Fish Summary:</h4>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px; color: #666;">
+                            <div><strong>Total Reports:</strong> ${fishData.reportCount || 0}</div>
+                            <div><strong>Unique Reporters:</strong> ${fishData.uniqueReporterCount || 0}</div>
+                            <div><strong>Flagged for Review:</strong> ${fishData.flaggedForReview ? 'Yes' : 'No'}</div>
+                            ${fishData.lastReportedAt ? `<div><strong>Last Reported:</strong> ${formatDate(fishData.lastReportedAt)}</div>` : ''}
+                        </div>
+                    </div>
+                ` : ''}
+                <div style="max-height: 400px; overflow-y: auto; margin-bottom: 20px;">
+                    ${reportsHtml}
+                </div>
+                <div style="text-align: center;">
+                    <button onclick="closeModal()" style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px; margin-right: 10px;">
+                        Close
+                    </button>
+                    <button onclick="clearReports('${fishId}', this)" style="padding: 10px 20px; background: #dc3545; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px;">
+                        🧹 Clear All Reports
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
+    // Use the existing modal system from tank.js if available
+    if (typeof showModal === 'function') {
+        showModal(modalHtml, () => {});
+    } else {
+        // Fallback modal creation
+        const modal = document.createElement('div');
+        modal.className = 'modal'; // Add the modal class
+        modal.style.cssText = 'position: fixed; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000;';
+        
+        const modalContent = document.createElement('div');
+        modalContent.style.cssText = 'background: white; border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); overflow: auto; max-width: 90vw; max-height: 90vh;';
+        modalContent.innerHTML = modalHtml;
+        
+        modal.appendChild(modalContent);
+        
+        // Store close function globally
+        window.closeModal = () => {
+            if (modal.parentNode) {
+                document.body.removeChild(modal);
+            }
+            // Clean up the global function
+            delete window.closeModal;
+        };
+        
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                window.closeModal();
+            }
+        });
+        
+        document.body.appendChild(modal);
     }
 }
 
@@ -769,30 +997,6 @@ async function loadReportsForFish(fishId) {
 function logout() {
     localStorage.removeItem('userToken');
     window.location.href = '/login.html';
-}
-
-// Format date utility (fallback if not in fish-utils.js)
-function formatDate(dateValue) {
-    if (!dateValue) return 'Unknown date';
-
-    let dateObj;
-    if (typeof dateValue === 'string') {
-        dateObj = new Date(dateValue);
-    } else if (typeof dateValue.toDate === 'function') {
-        dateObj = dateValue.toDate();
-    } else {
-        dateObj = dateValue;
-    }
-
-    if (isNaN(dateObj)) return 'Unknown date';
-
-    return dateObj.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-    });
 }
 
 // Download only explicitly valid/invalid fish for training
@@ -807,16 +1011,47 @@ async function downloadAllImages() {
 
     try {
         // Fetch only fish that have been explicitly marked as fish or not fish
-        const validFishSnapshot = await window.db.collection('fishes_test')
-            .where('isFish', '==', true)
-            .get();
+        // Use getFishBySort with additional filtering for explicit labeling
+        const token = localStorage.getItem('userToken');
         
-        const invalidFishSnapshot = await window.db.collection('fishes_test')
-            .where('isFish', '==', false)
-            .get();
+        // For now, we'll still use direct API calls for the download function
+        // since we need specific moderation filters that getFishBySort doesn't support yet
+        const validParams = new URLSearchParams({
+            isFish: 'true',
+            limit: '10000',
+            isVisible: 'true',
+            deleted: 'false'
+        });
+        const validResponse = await fetch(`${BACKEND_URL}/api/fish?${validParams}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
 
-        const validFish = validFishSnapshot.docs;
-        const invalidFish = invalidFishSnapshot.docs;
+        const invalidParams = new URLSearchParams({
+            isFish: 'false',
+            limit: '10000',
+            isVisible: 'true',
+            deleted: 'false'
+        });
+        const invalidResponse = await fetch(`${BACKEND_URL}/api/fish?${invalidParams}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!validResponse.ok || !invalidResponse.ok) {
+            throw new Error('Failed to fetch fish data');
+        }
+
+        const validData = await validResponse.json();
+        const invalidData = await invalidResponse.json();
+        
+        // The backend returns data in data.data format
+        const validFish = validData.data || [];
+        const invalidFish = invalidData.data || [];
         const allLabeledFish = [...validFish, ...invalidFish];
 
         if (allLabeledFish.length === 0) {
@@ -855,9 +1090,8 @@ async function downloadAllImages() {
 
         for (const batch of batches) {
             // Process batch in parallel
-            const batchPromises = batch.map(async (doc) => {
-                const fish = doc.data();
-                const fishId = doc.id;
+            const batchPromises = batch.map(async (fish) => {
+                const fishId = fish.id;
 
                 try {
                     // Only process if explicitly labeled
@@ -1197,29 +1431,38 @@ function updateStatsAfterBulkAction(action, count) {
 // Helper function to refresh a single fish (useful for flip action)
 async function refreshSingleFish(fishId) {
     try {
-        const doc = await window.db.collection('fishes_test').doc(fishId).get();
-        if (doc.exists) {
-            const fish = doc.data();
-            const fishCard = document.querySelector(`[data-fish-id="${fishId}"]`);
-            if (fishCard) {
-                // Update the image source
-                const img = fishCard.querySelector('.fish-image');
-                if (img) {
-                    img.src = fish.image || fish.Image;
-                }
-                
-                // Update the fish data in cache
-                const fishIndex = fishCache.findIndex(d => d.id === fishId);
-                if (fishIndex !== -1) {
-                    fishCache[fishIndex] = { id: fishId, data: () => fish };
-                }
-                
-                // Re-enable the flip button
-                const flipBtn = fishCard.querySelector('button[onclick*="flipFish"]');
-                if (flipBtn) {
-                    flipBtn.disabled = false;
-                    flipBtn.textContent = '🔄 Flip';
-                }
+        const token = localStorage.getItem('userToken');
+        const response = await fetch(`${BACKEND_URL}/api/fish/${fishId}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to fetch fish data');
+        }
+
+        const fish = await response.json();
+        const fishCard = document.querySelector(`[data-fish-id="${fishId}"]`);
+        if (fishCard) {
+            // Update the image source
+            const img = fishCard.querySelector('.fish-image');
+            if (img) {
+                img.src = fish.image || fish.Image;
+            }
+            
+            // Update the fish data in cache
+            const fishIndex = fishCache.findIndex(d => d.id === fishId);
+            if (fishIndex !== -1) {
+                fishCache[fishIndex] = { id: fishId, data: () => fish };
+            }
+            
+            // Re-enable the flip button
+            const flipBtn = fishCard.querySelector('button[onclick*="flipFish"]');
+            if (flipBtn) {
+                flipBtn.disabled = false;
+                flipBtn.textContent = '🔄 Flip';
             }
         }
     } catch (error) {
@@ -1497,4 +1740,12 @@ function updateFishCardsForUser(userId, updates) {
             }
         }
     });
+}
+
+// Utility function to escape HTML for safe display
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
