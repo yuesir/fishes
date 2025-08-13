@@ -10,7 +10,7 @@
     
     // Initialize Google Sign-In
     google.accounts.id.initialize({
-      client_id: "571679687712-bhet9jnrul5gm1ijhjk6am28dfrtd88h.apps.googleusercontent.com",
+      client_id: "1036234289215-13qqedj7gmshc1bnki82k0ugca32474o.apps.googleusercontent.com",
       callback: handleGoogleCredentialResponse
     });
     
