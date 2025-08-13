@@ -28,11 +28,11 @@ let BACKEND_URL;
 if (forceLocal) {
     BACKEND_URL = 'http://localhost:8080';
 } else if (forceProd) {
-    BACKEND_URL = 'https://fishes-be-571679687712.northamerica-northeast1.run.app';
+    BACKEND_URL = 'https://drawafish.online';
 } else {
     BACKEND_URL = isLocalhost
         ? 'http://localhost:8080'
-        : 'https://fishes-be-571679687712.northamerica-northeast1.run.app';
+        : 'https://drawafish.online';
 }
 
 // Calculate fish score (upvotes - downvotes)
